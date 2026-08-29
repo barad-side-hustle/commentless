@@ -5,6 +5,17 @@ export { discoverFiles, type DiscoverOptions, type DiscoveryMode } from './core/
 export { processFile, type ProcessOptions } from './core/process.js';
 export { cacheDirectory, CleanFileCache } from './core/cache.js';
 export { defaultConcurrency, run, type RunOptions } from './core/run.js';
+export {
+  detectTestImport,
+  draftTestNames,
+  groupComments,
+  looksLikeCode,
+  renderTestFile,
+  toTestNames,
+  type DraftOptions,
+  type DraftResult,
+  type TestNameDraft,
+} from './core/testnames.js';
 export { report, REPORTERS, type ReportContext, type ReporterName } from './reporters/index.js';
 export {
   CONFIG_FILE_NAME,
