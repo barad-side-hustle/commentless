@@ -89,6 +89,9 @@ Inline escapes
   commentless-ignore-file      skip the whole file
 `;
 
+const AGENT_PROMPT_URL =
+  'https://github.com/barad-side-hustle/commentless#hand-the-skeleton-to-an-agent';
+
 class UsageError extends Error {}
 
 async function promptYesNo(question: string): Promise<boolean> {
@@ -339,7 +342,12 @@ export async function main(argv: readonly string[]): Promise<number> {
           `${colors.green('✔')} Drafted ${draft.drafts.length} test name${
             draft.drafts.length === 1 ? '' : 's'
           } from ${draft.files} file${draft.files === 1 ? '' : 's'} into ` +
-            `${colors.bold(shown)}${skipped}\n`
+            `${colors.bold(shown)}${skipped}\n` +
+            colors.dim(
+              `  Next: hand ${shown} to your coding agent and have it fill in every it.todo\n` +
+                '  against the source file named in its describe block. Prompt to paste:\n' +
+                `  ${AGENT_PROMPT_URL}\n`
+            )
         );
       }
     }

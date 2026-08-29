@@ -349,6 +349,13 @@ describe('cli --to-test-names', () => {
     expect(result.stderr).toContain('Drafted 1 test name from 1 file');
   });
 
+  it('points at the prompt for handing the skeleton to an agent', async () => {
+    box.write('a.ts', '// caches the token\nexport const a = 1;\n');
+    const result = await cli(['--check', '--to-test-names', 'drafts.test.ts'], box.dir);
+    expect(result.stderr).toContain('hand drafts.test.ts to your coding agent');
+    expect(result.stderr).toContain('#hand-the-skeleton-to-an-agent');
+  });
+
   it('says how many comments it refused to draft', async () => {
     box.write('a.ts', '// caches the token\n// return null;\nexport const a = 1;\n');
     const result = await cli(['--check', '--to-test-names', 'drafts.test.ts'], box.dir);

@@ -605,6 +605,39 @@ Note what happened on the way:
 Then do the actual work: turn each `it.todo` into a real test, deleting the ones that were never
 claims worth keeping. When the file is honest, run `commentless --write` and the comments go.
 
+#### Hand the skeleton to an agent
+
+Filling in a hundred `it.todo` stubs is exactly the work you should not be doing by hand, and
+[for the reasons in the philosophy](#the-token-argument-since-you-are-going-to-ask) it is work an
+agent is unusually good at: every stub names one behaviour, and the file it belongs to is written
+on the `describe` above it. Point your coding agent at the draft and paste this:
+
+```text
+tests/comments.todo.test.ts is a generated skeleton. Every it.todo in it is a
+sentence that used to be a comment in the file named by its describe block.
+
+Work through the skeleton one describe at a time:
+
+1. Read the source file named in the describe block.
+2. For each it.todo, decide what it actually claims about that file's
+   behaviour, then replace it with a real test that would fail if the claim
+   stopped being true. Keep the name — it is the explanation. Reword it only
+   to match what you actually asserted.
+3. If a stub is not a testable claim about the code (a note to a past
+   colleague, a stale aside, a fact about some other system), delete it and
+   tell me which ones you deleted and why. Do not invent a test to justify
+   keeping one.
+4. Do not add explanatory comments to the tests or back into the source. The
+   test name is the explanation. That is the whole point of the exercise.
+
+Then run the suite and show me the failures. Do not run `commentless --write`
+— I will do that once the tests are green.
+```
+
+The last line matters. The stubs are the only surviving copy of those explanations until the tests
+are real, and `--write` deletes the originals. Let the agent draft; you decide when the prose is
+safe to lose.
+
 The draft is written to the path you name — it will not clobber an existing file without
 `--force`, and the check happens _before_ anything is rewritten, so a typo cannot cost you a
 `--write`. The import line is picked from your `package.json`: `vitest`, `@jest/globals`,
@@ -878,7 +911,7 @@ request. You can also simply open an issue with the tag "enhancement".
 
 ```sh
 bun install
-bun run test   # 271 tests
+bun run test   # 272 tests
 bun run ci     # lint, format, typecheck, test, build, and the tool run against its own source
 ```
 
