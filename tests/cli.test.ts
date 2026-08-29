@@ -333,3 +333,54 @@ describe('the init command', () => {
     expect(result.stdout).toContain('--strict');
   });
 });
+
+describe('init and package.json scripts, via the CLI', () => {
+  let box: Sandbox;
+
+  beforeEach(() => {
+    box = sandbox();
+    box.write('package.json', '{\n  "name": "demo"\n}\n');
+  });
+
+  afterEach(() => box.cleanup());
+
+  const scripts = () => JSON.parse(readFileSync(`${box.dir}/package.json`, 'utf8')).scripts ?? {};
+
+  it('leaves package.json alone when nothing can be asked', async () => {
+    expect((await cli(['init'], box.dir)).code).toBe(0);
+    expect(scripts()).toEqual({});
+  });
+
+  it('--scripts adds them without a prompt', async () => {
+    const result = await cli(['init', '--scripts'], box.dir);
+    expect(result.code).toBe(0);
+    expect(result.stdout).toContain('Added to package.json');
+    expect(scripts()['comments:remove']).toContain('--write');
+    expect(scripts()['comments:check']).toContain('--reporter github');
+  });
+
+  it('--no-scripts adds nothing', async () => {
+    expect((await cli(['init', '--no-scripts'], box.dir)).code).toBe(0);
+    expect(scripts()).toEqual({});
+  });
+
+  it('exits 2 when both script flags are given', async () => {
+    const result = await cli(['init', '--scripts', '--no-scripts'], box.dir);
+    expect(result.code).toBe(2);
+    expect(result.stderr).toContain('mutually exclusive');
+  });
+
+  it('writes a script the shell can actually run', async () => {
+    box.write('a.ts', '// note\nexport const a = 1;\n');
+    await cli(['init', '--scripts', '--strict'], box.dir);
+
+    const command = scripts()['comments:check'] as string;
+    expect(command).toMatch(/^bunx -y commentless@\d+\.\d+\.\d+ --check --reporter github$/);
+  });
+
+  it('documents the flag in --help', async () => {
+    const result = await cli(['--help'], box.dir);
+    expect(result.stdout).toContain('--scripts');
+    expect(result.stdout).toContain('--no-scripts');
+  });
+});

@@ -1,4 +1,5 @@
 import path from 'node:path';
+import { createInterface } from 'node:readline/promises';
 import { parseArgs } from 'node:util';
 import { createColors } from 'picocolors';
 import { ConfigError, CONFIG_FILE_NAME, type FileConfig, loadConfig } from './config.js';
@@ -14,8 +15,7 @@ import {
 } from './core/keep.js';
 import { report, REPORTERS, type ReporterName } from './reporters/index.js';
 import type { RunMode } from './types.js';
-
-const VERSION = '0.1.0';
+import { VERSION } from './version.js';
 
 const HELP = `commentless ${VERSION}
 
@@ -62,6 +62,9 @@ Output
 init
   --force                  Overwrite an existing config file.
   --strict                 Set maxAllowed to 0 instead of today's comment count.
+  --scripts                Add comments:remove and comments:check to package.json
+                           without asking. --no-scripts never adds them.
+                           Interactively, init asks.
 
 Other
   --concurrency <n>        Worker threads (default: cpus - 1).
@@ -82,6 +85,16 @@ Inline escapes
 `;
 
 class UsageError extends Error {}
+
+async function promptYesNo(question: string): Promise<boolean> {
+  const rl = createInterface({ input: process.stdin, output: process.stdout });
+  try {
+    const answer = (await rl.question(`\n${question} [Y/n] `)).trim().toLowerCase();
+    return answer === '' || answer === 'y' || answer === 'yes';
+  } finally {
+    rl.close();
+  }
+}
 
 function parseExtensions(value: string): string[] {
   const extensions = value
@@ -135,6 +148,8 @@ export async function main(argv: readonly string[]): Promise<number> {
         config: { type: 'string' },
         force: { type: 'boolean' },
         strict: { type: 'boolean' },
+        scripts: { type: 'boolean' },
+        'no-scripts': { type: 'boolean' },
         help: { type: 'boolean', short: 'h' },
         version: { type: 'boolean' },
       },
@@ -216,6 +231,12 @@ export async function main(argv: readonly string[]): Promise<number> {
     const useColor = !values['no-color'] && process.stdout.isTTY === true && !process.env.NO_COLOR;
 
     if (isInit) {
+      if (values.scripts && values['no-scripts']) {
+        throw new UsageError('--scripts and --no-scripts are mutually exclusive');
+      }
+      const scripts = values.scripts ? true : values['no-scripts'] ? false : undefined;
+      const interactive = process.stdin.isTTY === true && process.stdout.isTTY === true;
+
       const result = await init({
         cwd,
         configPath: values.config,
@@ -227,6 +248,8 @@ export async function main(argv: readonly string[]): Promise<number> {
         ignoreFile,
         gitignore,
         keep,
+        scripts,
+        ...(scripts === undefined && interactive ? { confirm: promptYesNo } : {}),
       });
       process.stdout.write(`${result.output}\n`);
       return result.existed ? 2 : 0;

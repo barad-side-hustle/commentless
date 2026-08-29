@@ -42,8 +42,8 @@ prose. `eslint-disable` is machinery. `@deprecated` is prose.
 
 ## Releasing
 
-Releases are automatic. Bump `version` in `package.json` **and** the `VERSION` constant in
-`src/cli.ts` (the workflow fails the release if they disagree), then merge to `main`.
+Releases are automatic. Bump `version` in `package.json` **and** `VERSION` in `src/version.ts`
+(the workflow fails the release if they disagree), then merge to `main`.
 
 The release workflow asks npm whether that version already exists. If it does, it does nothing.
 If it does not, it runs every gate — lint, format, typecheck, build, test, and the CLI against

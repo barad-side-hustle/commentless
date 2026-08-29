@@ -285,17 +285,33 @@ $ commentless init
 maxAllowed is set to 41 so the gate passes today. Ratchet it down as you
 move those explanations into test names — that is the whole point.
 
+These scripts are missing from package.json:
+  comments:remove: bunx -y commentless@0.2.0 --write
+  comments:check: bunx -y commentless@0.2.0 --check --reporter github
+
+Add them? [Y/n] y
+
+✔ Added to package.json:
+  comments:remove: bunx -y commentless@0.2.0 --write
+  comments:check: bunx -y commentless@0.2.0 --check --reporter github
+
 Next:
-  1. "comments:check": "commentless --check --reporter github" in package.json
-  2. run it in CI on every pull request
-  3. commentless --write when you are ready to remove them
+  1. run comments:check in CI on every pull request
+  2. run comments:remove when you are ready to delete them
 ```
+
+It asks before touching `package.json`, shows you the exact lines first, never overwrites a script
+you already have, and keeps your indentation. If `commentless` is a devDependency it writes the
+bare binary; if you ran it through `bunx` it writes a pinned `bunx` command, because that is the
+one that will actually work.
 
 | Flag              | Effect                                                                        |
 | ----------------- | ----------------------------------------------------------------------------- |
 | `--strict`        | Set `maxAllowed` to `0` instead of today's count. For greenfield repos.       |
 | `--force`         | Overwrite an existing config. Without it, `init` exits 2 and touches nothing. |
 | `--config <path>` | Write somewhere other than `./commentless.config.json`.                       |
+| `--scripts`       | Add the npm scripts without asking. Use this in a script or a Dockerfile.     |
+| `--no-scripts`    | Never add them. Also the default when there is no TTY to ask on.              |
 
 `--ext` and `--ignore` are carried into the written file, so
 `commentless init --ext ts,tsx --ignore 'db/generated/**'` gets you something you can commit as-is.

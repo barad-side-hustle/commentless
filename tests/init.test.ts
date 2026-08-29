@@ -111,3 +111,116 @@ describe('init', () => {
     expect(() => validateConfig(defaultConfig(), 'test')).not.toThrow();
   });
 });
+
+describe('init and package.json scripts', () => {
+  let box: Sandbox;
+
+  beforeEach(() => {
+    box = sandbox();
+    box.write('package.json', '{\n  "name": "demo"\n}\n');
+  });
+
+  afterEach(() => box.cleanup());
+
+  const scripts = () => JSON.parse(readFileSync(`${box.dir}/package.json`, 'utf8')).scripts ?? {};
+
+  it('asks before adding, and adds on yes', async () => {
+    const asked: string[] = [];
+    const result = await init(
+      options(box, {
+        confirm: async question => {
+          asked.push(question);
+          return true;
+        },
+      })
+    );
+
+    expect(asked).toEqual(['Add them?']);
+    expect(result.scriptsAdded).toEqual(['comments:remove', 'comments:check']);
+    expect(scripts()['comments:check']).toContain('--check');
+    expect(result.output).toContain('Added to package.json');
+  });
+
+  it('adds nothing on no, and says so', async () => {
+    const result = await init(options(box, { confirm: async () => false }));
+
+    expect(result.scriptsAdded).toEqual([]);
+    expect(scripts()).toEqual({});
+    expect(result.output).toContain('Skipped');
+  });
+
+  it('shows what it is about to add before asking', async () => {
+    const result = await init(options(box, { confirm: async () => false }));
+    expect(result.output).toContain('These scripts are missing from package.json');
+    expect(result.output).toContain('comments:remove: bunx -y commentless@');
+  });
+
+  it('adds without asking when scripts is true', async () => {
+    const result = await init(options(box, { scripts: true }));
+    expect(result.scriptsAdded).toHaveLength(2);
+  });
+
+  it('never asks and never adds when scripts is false', async () => {
+    let asked = false;
+    const result = await init(
+      options(box, {
+        scripts: false,
+        confirm: async () => {
+          asked = true;
+          return true;
+        },
+      })
+    );
+
+    expect(asked).toBe(false);
+    expect(result.scriptsAdded).toEqual([]);
+    expect(scripts()).toEqual({});
+  });
+
+  it('adds nothing when there is nobody to ask', async () => {
+    const result = await init(options(box));
+    expect(result.scriptsAdded).toEqual([]);
+    expect(scripts()).toEqual({});
+  });
+
+  it('leaves an existing script alone and only adds the missing one', async () => {
+    box.write('package.json', '{"scripts":{"comments:remove":"my own thing"}}');
+    const result = await init(options(box, { confirm: async () => true }));
+
+    expect(result.scriptsAdded).toEqual(['comments:check']);
+    expect(scripts()['comments:remove']).toBe('my own thing');
+  });
+
+  it('does not ask when both scripts are already there', async () => {
+    box.write('package.json', '{"scripts":{"comments:remove":"a","comments:check":"b"}}');
+    let asked = false;
+    const result = await init(
+      options(box, {
+        confirm: async () => {
+          asked = true;
+          return true;
+        },
+      })
+    );
+
+    expect(asked).toBe(false);
+    expect(result.scriptsAdded).toEqual([]);
+    expect(result.output).toContain('already has');
+  });
+
+  it('does not fall over when there is no package.json', async () => {
+    const bare = sandbox();
+    try {
+      const result = await init(options(bare, { confirm: async () => true }));
+      expect(result.scriptsAdded).toEqual([]);
+      expect(result.existed).toBe(false);
+    } finally {
+      bare.cleanup();
+    }
+  });
+
+  it('points at the npm scripts once it has written them', async () => {
+    const result = await init(options(box, { scripts: true }));
+    expect(result.output).toContain('run comments:check in CI');
+  });
+});

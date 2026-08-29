@@ -1,6 +1,6 @@
 {
   "name": "commentless",
-  "version": "0.1.0",
+  "version": "0.2.0",
   "description": "Strip comments from JavaScript and TypeScript with an AST, keep the ones that do work, and fail CI when new ones appear.",
   "keywords": [
     "comments",
