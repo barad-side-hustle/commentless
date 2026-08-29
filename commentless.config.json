@@ -1,0 +1,4 @@
+{
+  "collapseBlankLines": true,
+  "ignore": ["tests/fixtures/**"]
+}
