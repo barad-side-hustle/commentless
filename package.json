@@ -29,7 +29,7 @@
     "node": ">=20"
   },
   "bin": {
-    "commentless": "./dist/bin.js"
+    "commentless": "dist/bin.js"
   },
   "exports": {
     ".": {
