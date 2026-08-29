@@ -1,14 +1,5 @@
 <a id="readme-top"></a>
 
-<!-- PROJECT SHIELDS -->
-
-[![Contributors][contributors-shield]][contributors-url]
-[![Forks][forks-shield]][forks-url]
-[![Stargazers][stars-shield]][stars-url]
-[![Issues][issues-shield]][issues-url]
-[![MIT License][license-shield]][license-url]
-[![npm][npm-shield]][npm-url]
-
 <!-- PROJECT LOGO -->
 <br />
 <div align="center">
@@ -16,16 +7,31 @@
 <h1 align="center">commentless</h1>
 
   <p align="center">
-    Your code does not need a narrator.
+    <strong>Your code does not need a narrator.</strong>
     <br />
     Strip comments from JavaScript and TypeScript with a real parser, keep the ones that
     actually do work, and fail CI when someone sneaks a new one in.
-    <br />
-    <br />
+  </p>
+
+<!-- PROJECT SHIELDS -->
+
+[![npm version][npm-shield]][npm-url]
+[![npm downloads][downloads-shield]][downloads-url]
+[![CI][build-shield]][build-url]
+[![Unpacked size][size-shield]][size-url]
+[![Node][node-version-shield]][node-version-url]
+[![License][license-shield]][license-url]
+[![Stars][stars-shield]][stars-url]
+
+  <p align="center">
     <a href="#usage"><strong>Explore the flags »</strong></a>
     <br />
     <br />
+    <a href="#see-it-work">See it work</a>
+    &middot;
     <a href="#why-your-comments-belong-in-test-names">The philosophy</a>
+    &middot;
+    <a href="#faq">FAQ</a>
     &middot;
     <a href="https://github.com/barad-side-hustle/commentless/issues/new?labels=bug">Report Bug</a>
     &middot;
@@ -58,6 +64,66 @@ bunx commentless          # delete them
 
 <p align="right">(<a href="#readme-top">back to top</a>)</p>
 
+<!-- SEE IT WORK -->
+
+## See it work
+
+A file with two explanatory comments, one trailing note, and one directive that is actually load
+bearing:
+
+```ts
+// The billing API answers 200 with an empty body when the user has never
+// subscribed, so we have to null-check before parsing.
+export async function getPlan(userId: string) {
+  const res = await fetch(`https://api.example.com/billing/${userId}`);
+  const body = await res.text(); // trailing note nobody reads
+  if (!body) return null;
+  /* eslint-disable-next-line no-eval */
+  return JSON.parse(body);
+}
+```
+
+`--check` tells you where they are and exits `1`, which is the whole CI story:
+
+```console
+$ bunx commentless . --check
+• src/billing.ts (3 comments found)
+  src/billing.ts:1:1  // The billing API answers 200 with an empty body when the user has n...
+  src/billing.ts:2:1  // subscribed, so we have to null-check before parsing.
+  src/billing.ts:5:34  // trailing note nobody reads
+
+✖ 1 file scanned · 3 comments to remove in 1 file, 1 kept · 31ms
+
+$ echo $?
+1
+```
+
+Three removed, **one kept** — note the count. `--write` gives you this, and the
+`eslint-disable-next-line` is still there, because deleting it would have handed a broken build to
+ESLint:
+
+```ts
+export async function getPlan(userId: string) {
+  const res = await fetch(`https://api.example.com/billing/${userId}`);
+  const body = await res.text();
+  if (!body) return null;
+  /* eslint-disable-next-line no-eval */
+  return JSON.parse(body);
+}
+```
+
+And the part a regex gets wrong. Only the last line here is a comment, and only the last line goes:
+
+```diff
+ const url = 'https://example.com';
+ const re = /\/\/ not a comment/;
+ const tpl = `path // still text`;
+ export const El = () => <div>see the // in this copy</div>;
+-// this one is not safe
+```
+
+<p align="right">(<a href="#readme-top">back to top</a>)</p>
+
 <!-- TABLE OF CONTENTS -->
 <details>
   <summary>Table of Contents</summary>
@@ -71,6 +137,7 @@ bunx commentless          # delete them
       </ul>
     </li>
     <li><a href="#tldr">TL;DR</a></li>
+    <li><a href="#see-it-work">See it work</a></li>
     <li>
       <a href="#getting-started">Getting Started</a>
       <ul>
@@ -84,11 +151,13 @@ bunx commentless          # delete them
       <ul>
         <li><a href="#comments-that-survive">Comments that survive</a></li>
         <li><a href="#configuration">Configuration</a></li>
+        <li><a href="#reporters">Reporters</a></li>
         <li><a href="#in-ci">In CI</a></li>
         <li><a href="#performance">Performance</a></li>
         <li><a href="#programmatic-api">Programmatic API</a></li>
       </ul>
     </li>
+    <li><a href="#faq">FAQ</a></li>
     <li><a href="#roadmap">Roadmap</a></li>
     <li><a href="#contributing">Contributing</a></li>
     <li><a href="#license">License</a></li>
@@ -225,8 +294,20 @@ Both are libraries, not CLIs, both are regex/lexer based, and both have been unm
 [![Vitest][vitest-shield]][vitest-url]
 [![Bun][bun-shield]][bun-url]
 
-Four dependencies, deliberately. `bunx` cold start is the product, and nobody wants to download a
-dependency tree to delete some slashes.
+Four direct dependencies, six in the whole tree, deliberately. `bunx` cold start is the product,
+and nobody wants to download a dependency graph to delete some slashes.
+
+|                     |                                                                    |
+| ------------------- | ------------------------------------------------------------------ |
+| Published tarball   | 27 kB                                                              |
+| Unpacked            | 88 kB across 6 shipped files                                       |
+| Direct dependencies | `typescript`, `tinyglobby`, `ignore`, `picocolors`                 |
+| Node                | 20 or newer                                                        |
+| Types               | bundled, no `@types/` package                                      |
+| Provenance          | every release is published from CI with `npm publish --provenance` |
+
+`typescript` is the big one and it is not negotiable — it is the parser, and it is the entire
+reason a `//` inside a template literal survives.
 
 <p align="right">(<a href="#readme-top">back to top</a>)</p>
 
@@ -476,6 +557,67 @@ allowed, an essay is not":
 The config is JSON on purpose. A `.ts` config would be a file this tool strips the comments out
 of, which is the kind of recursion that ruins an afternoon.
 
+### Reporters
+
+Four of them, because a human at a terminal, a CI annotator and a script piping into `jq` want
+very different things.
+
+`pretty` (default) — file, line, column, and the head of the offending comment:
+
+```console
+• src/billing.ts (3 comments found)
+  src/billing.ts:1:1  // The billing API answers 200 with an empty body when the user has n...
+  src/billing.ts:5:34  // trailing note nobody reads
+
+✖ 1 file scanned · 3 comments to remove in 1 file, 1 kept · 31ms
+```
+
+`github` — workflow commands, so each one lands inline on the PR diff:
+
+```console
+::error file=src/billing.ts,line=1,col=1,title=commentless::Remove this comment%3A // The billing…
+::notice title=commentless::1 file scanned · 3 comments to remove in 1 file, 1 kept · 123ms
+```
+
+`summary` — one line, for a pre-commit hook that should not shout:
+
+```console
+1 file scanned · 3 comments to remove in 1 file, 1 kept · 61ms
+```
+
+`json` — a versioned, stable shape for scripts and dashboards:
+
+```json
+{
+  "version": 1,
+  "summary": {
+    "mode": "check",
+    "discovered": 1,
+    "parsed": 1,
+    "cached": 0,
+    "filesWithComments": 1,
+    "commentsRemoved": 3,
+    "commentsKept": 1,
+    "errors": 0,
+    "durationMs": 96
+  },
+  "exitCode": 1,
+  "files": [
+    {
+      "file": "src/billing.ts",
+      "changed": true,
+      "keptCount": 1,
+      "comments": [
+        { "line": 1, "column": 1, "kind": "line", "text": "// The billing API answers…" }
+      ]
+    }
+  ]
+}
+```
+
+The `version` field is there so you can pin against it:
+`commentless --check --reporter json | jq '.summary.commentsRemoved'`.
+
 ### In CI
 
 `--reporter github` emits workflow annotations, so every offending comment shows up inline on the
@@ -483,7 +625,7 @@ PR diff, right where its author can feel something about it.
 
 ```yaml
 - uses: oven-sh/setup-bun@v2
-- run: bunx commentless@0.1.0 . --check --reporter github
+- run: bunx commentless@0.2.0 . --check --reporter github
 ```
 
 Scope it to the PR diff instead of the whole repo (needs `fetch-depth: 0`):
@@ -491,7 +633,7 @@ Scope it to the PR diff instead of the whole repo (needs `fetch-depth: 0`):
 ```yaml
 - uses: actions/checkout@v4
   with: { fetch-depth: 0 }
-- run: bunx commentless@0.1.0 . --check --changed --base origin/main --reporter github
+- run: bunx commentless@0.2.0 . --check --changed --base origin/main --reporter github
 ```
 
 Adopting on a repo with 2 000 existing comments? Do not fix them in one PR — nobody will review
@@ -561,6 +703,60 @@ thank you by saying nothing, which is how reviewers say thank you.
 
 <p align="right">(<a href="#readme-top">back to top</a>)</p>
 
+<!-- FAQ -->
+
+## FAQ
+
+**Does it delete my JSDoc?**
+In `.ts`/`.tsx`, yes — prose JSDoc is prose, and your types are already in the signature. In the
+`.js` family, `@type`, `@typedef`, `@satisfies`, `@template`, `@overload` and `@import` survive,
+because there they genuinely drive inference. That is the `jsdoc-type` rule; switch it off with
+`--no-keep jsdoc-type` if you want it gone everywhere, or add
+`--keep '@(param|returns)'` if you want more of it kept.
+
+**What about `// TODO`?**
+Deleted. A TODO in source is a task nobody is assigned to and no board is tracking. Move it to an
+issue, where it has an owner. If you disagree, `--keep 'TODO'` — it is one flag and no hard
+feelings.
+
+**Is it safe to run twice?**
+Yes. The second run is a no-op, and the clean-file cache makes it a fast one:
+
+```console
+$ commentless . --write
+✔ 4 files scanned · 4 comments removed in 4 files · 83ms
+$ commentless . --write
+✔ 4 files scanned, 4 cached · 0 comments removed in 0 files · 34ms
+```
+
+**Will it wreck my line endings, or my BOM?**
+No. CRLF stays CRLF, a BOM stays a BOM, and every line that did not own a comment comes out
+byte-identical. Blank runs are left alone unless you ask for `--collapse-blank-lines`.
+
+**Can I adopt it on a repo with 2 000 comments?**
+That is what `commentless init` and `--max-allowed` are for. `init` baselines the gate to today's
+count so it passes on the first run, then you ratchet it down. Nobody has to review a 4 000-line
+deletion PR.
+
+**Does it work in a monorepo?**
+Yes. Config resolves from the working directory upward, so a package inherits the root
+`commentless.config.json` unless it ships its own. Point it at paths (`commentless packages/api`)
+to scope a run.
+
+**How do I keep one specific comment?**
+`// commentless-keep` on the comment, or `// commentless-keep-next-line` above it. To skip an
+entire file, put `// commentless-ignore-file` anywhere in its first 4 KB.
+
+**Does it need a `tsconfig.json`?**
+No. It parses each file standalone with the TypeScript compiler — no program, no type-checking, no
+project graph. That is why it is fast and why it works on a loose script.
+
+**Is it an ESLint plugin?**
+Not yet — [it is on the roadmap](#roadmap). Today it is a CLI and a small programmatic API, which
+is what you want in CI anyway.
+
+<p align="right">(<a href="#readme-top">back to top</a>)</p>
+
 <!-- ROADMAP -->
 
 ## Roadmap
@@ -599,7 +795,7 @@ request. You can also simply open an issue with the tag "enhancement".
 
 ```sh
 bun install
-bun run test   # 137 tests
+bun run test   # 202 tests
 bun run ci     # lint, format, typecheck, test, build, and the tool run against its own source
 ```
 
@@ -654,18 +850,21 @@ Project Link: [https://github.com/barad-side-hustle/commentless](https://github.
 
 <!-- MARKDOWN LINKS & IMAGES -->
 
-[contributors-shield]: https://img.shields.io/github/contributors/barad-side-hustle/commentless.svg?style=for-the-badge
-[contributors-url]: https://github.com/barad-side-hustle/commentless/graphs/contributors
-[forks-shield]: https://img.shields.io/github/forks/barad-side-hustle/commentless.svg?style=for-the-badge
-[forks-url]: https://github.com/barad-side-hustle/commentless/network/members
-[stars-shield]: https://img.shields.io/github/stars/barad-side-hustle/commentless.svg?style=for-the-badge
-[stars-url]: https://github.com/barad-side-hustle/commentless/stargazers
-[issues-shield]: https://img.shields.io/github/issues/barad-side-hustle/commentless.svg?style=for-the-badge
-[issues-url]: https://github.com/barad-side-hustle/commentless/issues
-[license-shield]: https://img.shields.io/github/license/barad-side-hustle/commentless.svg?style=for-the-badge
-[license-url]: https://github.com/barad-side-hustle/commentless/blob/main/LICENSE
-[npm-shield]: https://img.shields.io/npm/v/commentless.svg?style=for-the-badge
+[npm-shield]: https://img.shields.io/npm/v/commentless.svg?style=flat-square&color=CB3837&logo=npm&logoColor=white
 [npm-url]: https://www.npmjs.com/package/commentless
+[downloads-shield]: https://img.shields.io/npm/dm/commentless.svg?style=flat-square&color=CB3837&label=downloads%2Fmonth
+[downloads-url]: https://www.npmjs.com/package/commentless
+[build-shield]: https://img.shields.io/github/actions/workflow/status/barad-side-hustle/commentless/ci.yml?branch=main&style=flat-square&label=CI
+[build-url]: https://github.com/barad-side-hustle/commentless/actions/workflows/ci.yml
+[size-shield]: https://img.shields.io/npm/unpacked-size/commentless?style=flat-square&color=4c1&label=unpacked
+[size-url]: https://www.npmjs.com/package/commentless?activeTab=code
+[node-version-shield]: https://img.shields.io/node/v/commentless?style=flat-square&color=5FA04E&logo=nodedotjs&logoColor=white
+[node-version-url]: https://nodejs.org/
+[license-shield]: https://img.shields.io/github/license/barad-side-hustle/commentless.svg?style=flat-square
+[license-url]: https://github.com/barad-side-hustle/commentless/blob/main/LICENSE
+[stars-shield]: https://img.shields.io/github/stars/barad-side-hustle/commentless.svg?style=flat-square&logo=github
+[stars-url]: https://github.com/barad-side-hustle/commentless/stargazers
+[issues-url]: https://github.com/barad-side-hustle/commentless/issues
 [typescript-shield]: https://img.shields.io/badge/TypeScript-3178C6?style=for-the-badge&logo=typescript&logoColor=white
 [typescript-url]: https://www.typescriptlang.org/
 [node-shield]: https://img.shields.io/badge/Node.js-5FA04E?style=for-the-badge&logo=nodedotjs&logoColor=white
