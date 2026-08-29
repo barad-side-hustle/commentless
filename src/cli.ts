@@ -5,7 +5,12 @@ import { ConfigError, loadConfig } from './config.js';
 import { DEFAULT_EXTENSIONS } from './core/scan.js';
 import { discoverFiles, type DiscoveryMode } from './core/files.js';
 import { defaultConcurrency, run } from './core/run.js';
-import { resolveKeepRules } from './core/keep.js';
+import {
+  KEEP_RULE_DESCRIPTIONS,
+  KEEP_RULE_NAMES,
+  resolveKeepRules,
+  UnknownKeepRuleError,
+} from './core/keep.js';
 import { report, REPORTERS, type ReporterName } from './reporters/index.js';
 import type { RunMode } from './types.js';
 
@@ -37,7 +42,12 @@ Scope
 
 Comments to keep
   --keep <regex>           Keep comments matching this pattern. Repeatable.
-  --no-default-keep        Drop the built-in directive allowlist. Dangerous.
+  --no-keep <rule>         Turn off one built-in keep rule. Repeatable.
+                           e.g. --no-keep jsdoc-type --no-keep license
+  --keep-only <list>       Enable only these built-in rules, comma-separated.
+                           e.g. --keep-only eslint,typescript
+  --no-default-keep        Turn off every built-in rule. Same as --keep-only ''.
+  --list-keep-rules        Print the built-in rules and what each one matches.
   --collapse-blank-lines   Also trim trailing whitespace and collapse 3+ blank lines.
 
 Output
@@ -104,7 +114,10 @@ export async function main(argv: readonly string[]): Promise<number> {
         'no-gitignore': { type: 'boolean' },
         'list-files': { type: 'boolean' },
         keep: { type: 'string', multiple: true },
+        'no-keep': { type: 'string', multiple: true },
+        'keep-only': { type: 'string' },
         'no-default-keep': { type: 'boolean' },
+        'list-keep-rules': { type: 'boolean' },
         'collapse-blank-lines': { type: 'boolean' },
         reporter: { type: 'string' },
         'max-allowed': { type: 'string' },
@@ -134,6 +147,14 @@ export async function main(argv: readonly string[]): Promise<number> {
     process.stdout.write(`${VERSION}\n`);
     return 0;
   }
+  if (values['list-keep-rules']) {
+    const width = Math.max(...KEEP_RULE_NAMES.map(name => name.length));
+    const lines = KEEP_RULE_NAMES.map(
+      name => `  ${name.padEnd(width)}  ${KEEP_RULE_DESCRIPTIONS[name] ?? ''}`
+    );
+    process.stdout.write(`Built-in keep rules\n${lines.join('\n')}\n`);
+    return 0;
+  }
 
   const cwd = process.cwd();
   const colors = createColors(
@@ -158,9 +179,18 @@ export async function main(argv: readonly string[]): Promise<number> {
     const mode: RunMode = values.check ? 'check' : values['dry-run'] ? 'dry-run' : 'write';
     const discovery: DiscoveryMode = values.staged ? 'staged' : values.changed ? 'changed' : 'all';
 
+    const keepOnly = values['keep-only']
+      ? values['keep-only']
+          .split(',')
+          .map(name => name.trim())
+          .filter(Boolean)
+      : config.keepOnly;
+
     const keep = resolveKeepRules({
       defaults: values['no-default-keep'] ? false : (config.defaultKeep ?? true),
       userPatterns: [...(config.keep ?? []), ...(values.keep ?? [])],
+      disable: [...(config.disableKeep ?? []), ...(values['no-keep'] ?? [])],
+      ...(keepOnly ? { only: keepOnly } : {}),
     });
 
     const paths = positionals.length > 0 ? positionals : ['.'];
@@ -219,7 +249,11 @@ export async function main(argv: readonly string[]): Promise<number> {
 
     return result.exitCode;
   } catch (error) {
-    if (error instanceof UsageError || error instanceof ConfigError) {
+    if (
+      error instanceof UsageError ||
+      error instanceof ConfigError ||
+      error instanceof UnknownKeepRuleError
+    ) {
       process.stderr.write(`${colors.red('error')} ${error.message}\n`);
       return 2;
     }

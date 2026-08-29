@@ -179,15 +179,15 @@ test. Write the test. Name it the paragraph. Delete the paragraph.
 
 Both are libraries, not CLIs, both are regex/lexer based, and both have been unmaintained since 2022. Nobody has shipped the thing that actually matters — a check mode.
 
-|                                            | commentless | strip-comments | decomment |
-| ------------------------------------------ | :---------: | :------------: | :-------: |
-| Runs as a CLI (`bunx` / `npx`)             |     ✅      |       ❌       |    ❌     |
-| `--check` mode that fails CI               |     ✅      |       ❌       |    ❌     |
-| TypeScript / TSX / JSX aware               |     ✅      |       ❌       |    ❌     |
-| Keeps `eslint-disable`, `@ts-expect-error` |     ✅      |       ❌       |    ❌     |
-| Safe inside strings, regex, templates      |     ✅      |    partial     |  partial  |
-| GitHub inline PR annotations               |     ✅      |       ❌       |    ❌     |
-| Maintained this decade                     |     ✅      |       ❌       |    ❌     |
+|                                            |    commentless    | strip-comments | decomment |
+| ------------------------------------------ | :---------------: | :------------: | :-------: |
+| Runs as a CLI (`bunx` / `npx`)             |        ✅         |       ❌       |    ❌     |
+| `--check` mode that fails CI               |        ✅         |       ❌       |    ❌     |
+| TypeScript / TSX / JSX aware               |        ✅         |       ❌       |    ❌     |
+| Keeps `eslint-disable`, `@ts-expect-error` | ✅ per-rule flags |       ❌       |    ❌     |
+| Safe inside strings, regex, templates      |        ✅         |    partial     |  partial  |
+| GitHub inline PR annotations               |        ✅         |       ❌       |    ❌     |
+| Maintained this decade                     |        ✅         |       ❌       |    ❌     |
 
 <p align="right">(<a href="#readme-top">back to top</a>)</p>
 
@@ -276,11 +276,14 @@ commentless [paths...] [options]
 
 **Comments to keep**
 
-| Flag                     | Effect                                                     |
-| ------------------------ | ---------------------------------------------------------- |
-| `--keep <regex>`         | Keep comments matching this pattern. Repeatable.           |
-| `--no-default-keep`      | Drop the built-in directive allowlist. Live dangerously.   |
-| `--collapse-blank-lines` | Also trim trailing whitespace and collapse 3+ blank lines. |
+| Flag                     | Effect                                                                 |
+| ------------------------ | ---------------------------------------------------------------------- |
+| `--keep <regex>`         | Keep comments matching this pattern. Repeatable.                       |
+| `--no-keep <rule>`       | Turn off one built-in rule. Repeatable. e.g. `--no-keep jsdoc-type`    |
+| `--keep-only <list>`     | Enable only these built-in rules. e.g. `--keep-only eslint,typescript` |
+| `--no-default-keep`      | Turn off every built-in rule. Live dangerously.                        |
+| `--list-keep-rules`      | Print every built-in rule and what it matches, then exit.              |
+| `--collapse-blank-lines` | Also trim trailing whitespace and collapse 3+ blank lines.             |
 
 **Output**
 
@@ -313,16 +316,51 @@ Deleting a directive is a bug, not a cleanup. A tool that strips your `// eslint
 and then hands the build to ESLint is not a tool, it is a practical joke. These are kept by
 default:
 
-| Group        | Examples                                                                                                                                         |
-| ------------ | ------------------------------------------------------------------------------------------------------------------------------------------------ |
-| Linters      | `eslint-disable*`, `eslint-enable`, `eslint-env`, `/* global */`, `biome-ignore`, `prettier-ignore`, `oxlint-disable`                            |
-| Type checker | `@ts-expect-error`, `@ts-ignore`, `@ts-nocheck`, `/// <reference … />`                                                                           |
-| Coverage     | `istanbul ignore`, `c8 ignore`, `v8 ignore`, `node:coverage`                                                                                     |
-| Bundlers     | `webpackChunkName:` and friends, `@vite-ignore`, `/* @__PURE__ */`, `@__NO_SIDE_EFFECTS__`                                                       |
-| Pragmas      | `@jsx`, `@jsxImportSource`, `@jsxRuntime`, `@vitest-environment`, `@jest-environment`                                                            |
-| JSDoc types  | `@type`, `@satisfies`, `@typedef`, `@template`, `@overload`, `@import` — in `.js`/`.jsx`/`.mjs`/`.cjs` only, where they actually drive inference |
-| Legal        | `@license`, `@preserve`, `SPDX-License-Identifier`, any `/*! … */`                                                                               |
-| Shebang      | `#!/usr/bin/env node`                                                                                                                            |
+Every one of these is a named rule you can switch off individually — run `commentless --list-keep-rules` to print this table straight from the binary.
+
+| Rule               | Matches                                                                                                                                       |
+| ------------------ | --------------------------------------------------------------------------------------------------------------------------------------------- |
+| `commentless`      | `commentless-keep`, `commentless-keep-next-line`                                                                                              |
+| `eslint`           | `eslint-disable*`, `eslint-enable`, `eslint-env`                                                                                              |
+| `eslint-globals`   | `/* global … */`, `/* globals … */`                                                                                                           |
+| `typescript`       | `@ts-expect-error`, `@ts-ignore`, `@ts-nocheck`, `@ts-check`                                                                                  |
+| `triple-slash`     | `/// <reference … />`                                                                                                                         |
+| `biome`            | `biome-ignore`                                                                                                                                |
+| `prettier`         | `prettier-ignore`                                                                                                                             |
+| `oxlint`           | `oxlint-disable`                                                                                                                              |
+| `coverage`         | `istanbul ignore`, `c8 ignore`, `v8 ignore`, `node:coverage`                                                                                  |
+| `bundler-magic`    | `webpackChunkName:` and friends, `@vite-ignore`                                                                                               |
+| `pure-annotation`  | `/* @__PURE__ */`, `@__NO_SIDE_EFFECTS__`, `@__KEY__`                                                                                         |
+| `jsx-pragma`       | `@jsx`, `@jsxImportSource`, `@jsxRuntime`, `@jsxFrag`                                                                                         |
+| `test-environment` | `@vitest-environment`, `@jest-environment`                                                                                                    |
+| `license`          | `@license`, `@preserve`, `SPDX-License-Identifier`                                                                                            |
+| `bang`             | any `/*! … */` comment                                                                                                                        |
+| `jsdoc-type`       | `@type`, `@satisfies`, `@typedef`, `@template`, `@overload`, `@import` — `.js`/`.jsx`/`.mjs`/`.cjs` only, where they actually drive inference |
+
+Shebangs (`#!/usr/bin/env node`) are not comments in the first place and are always safe.
+
+Disagree with one of them? Every rule is individually switchable, in increasing order of confidence
+in your own judgement:
+
+```sh
+commentless --no-keep jsdoc-type                   # one rule off
+commentless --no-keep eslint --no-keep typescript  # a couple
+commentless --keep-only eslint,typescript          # only these two on
+commentless --no-default-keep                      # good luck
+```
+
+Or in the config, which is where it belongs once you have actually decided:
+
+```json
+{ "disableKeep": ["jsdoc-type"] }
+```
+
+```json
+{ "keepOnly": ["eslint", "typescript"] }
+```
+
+A typo in a rule name is a hard error that lists the valid ones, so a fat finger cannot quietly
+switch your whole allowlist off.
 
 Add your own with `--keep <regex>` (repeatable) or `keep` in the config. A common pair — "a link is
 allowed, an essay is not":
@@ -350,11 +388,15 @@ allowed, an essay is not":
   "ext": ["ts", "tsx"],
   "ignore": ["db/generated/**", ".storybook/**"],
   "keep": ["https?://", "@(public|internal)\\b"],
+  "disableKeep": ["jsdoc-type"],
   "collapseBlankLines": true,
   "maxAllowed": 0,
   "reporter": "pretty"
 }
 ```
+
+`keepOnly` is the other half of the pair: `disableKeep` is a subtraction from the built-in set,
+`keepOnly` replaces it. Both reject unknown rule names.
 
 The config is JSON on purpose. A `.ts` config would be a file this tool strips the comments out
 of, which is the kind of recursion that ruins an afternoon.
@@ -453,6 +495,8 @@ thank you by saying nothing, which is how reviewers say thank you.
 - [x] `--check` mode with GitHub inline annotations
 - [x] Worker pool + clean-file cache
 - [x] `--max-allowed` ratchet for gradual adoption
+- [x] Per-rule `--no-keep` / `--keep-only` control over the built-in allowlist
+- [x] Publish to npm automatically on every version bump landing on `main`
 - [ ] `--to-test-names` — draft `it(...)` stubs from the comments it is about to delete
 - [ ] Vue SFC and Svelte support
 - [ ] An ESLint rule, for teams that want the squiggle in the editor

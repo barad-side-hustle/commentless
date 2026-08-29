@@ -168,3 +168,78 @@ describe('cli', () => {
     expect(result.stderr).toContain('git repository');
   });
 });
+
+describe('per-rule keep flags', () => {
+  let box: Sandbox;
+
+  beforeEach(() => {
+    box = sandbox();
+    box.write('commentless.config.json', '{"cache": false}');
+    box.write(
+      'a.ts',
+      '// eslint-disable-next-line no-console\n// @ts-expect-error stale\nconsole.log(1);\n'
+    );
+  });
+
+  afterEach(() => box.cleanup());
+
+  it('lists the built-in rules', async () => {
+    const result = await cli(['--list-keep-rules'], box.dir);
+    expect(result.code).toBe(0);
+    expect(result.stdout).toContain('eslint-disable, eslint-enable, eslint-env');
+    expect(result.stdout).toContain('typescript');
+  });
+
+  it('keeps both directives by default', async () => {
+    expect((await cli(['--check'], box.dir)).code).toBe(0);
+  });
+
+  it('--no-keep turns off one rule at a time', async () => {
+    expect((await cli(['--check', '--no-keep', 'eslint'], box.dir)).code).toBe(1);
+    expect((await cli(['--check', '--no-keep', 'typescript'], box.dir)).code).toBe(1);
+  });
+
+  it('--no-keep is repeatable', async () => {
+    const result = await cli(
+      ['--check', '--no-keep', 'eslint', '--no-keep', 'typescript', '--reporter', 'json'],
+      box.dir
+    );
+    expect(result.code).toBe(1);
+    expect(JSON.parse(result.stdout).summary.commentsRemoved).toBe(2);
+  });
+
+  it('--keep-only narrows to the listed rules', async () => {
+    const result = await cli(['--check', '--keep-only', 'eslint', '--reporter', 'json'], box.dir);
+    expect(result.code).toBe(1);
+    expect(JSON.parse(result.stdout).summary.commentsRemoved).toBe(1);
+    expect(JSON.parse(result.stdout).summary.commentsKept).toBe(1);
+  });
+
+  it('--keep-only accepts a comma-separated list', async () => {
+    expect((await cli(['--check', '--keep-only', 'eslint,typescript'], box.dir)).code).toBe(0);
+  });
+
+  it('exits 2 on an unknown rule name', async () => {
+    const result = await cli(['--check', '--no-keep', 'eslnt'], box.dir);
+    expect(result.code).toBe(2);
+    expect(result.stderr).toContain('unknown keep rule "eslnt"');
+    expect(result.stderr).toContain('Valid rules:');
+  });
+
+  it('reads disableKeep from the config file', async () => {
+    box.write('commentless.config.json', '{"cache": false, "disableKeep": ["typescript"]}');
+    expect((await cli(['--check'], box.dir)).code).toBe(1);
+  });
+
+  it('reads keepOnly from the config file', async () => {
+    box.write('commentless.config.json', '{"cache": false, "keepOnly": ["eslint", "typescript"]}');
+    expect((await cli(['--check'], box.dir)).code).toBe(0);
+  });
+
+  it('rejects an unknown rule name in the config file', async () => {
+    box.write('commentless.config.json', '{"disableKeep": ["nope"]}');
+    const result = await cli(['--check'], box.dir);
+    expect(result.code).toBe(2);
+    expect(result.stderr).toContain('unknown keep rule "nope"');
+  });
+});

@@ -1,5 +1,6 @@
 import { existsSync, readFileSync } from 'node:fs';
 import path from 'node:path';
+import { KEEP_RULE_NAMES } from './core/keep.js';
 import { REPORTERS, type ReporterName } from './reporters/index.js';
 
 export const CONFIG_FILE_NAME = 'commentless.config.json';
@@ -11,6 +12,8 @@ export interface FileConfig {
   gitignore?: boolean;
   keep?: string[];
   defaultKeep?: boolean;
+  disableKeep?: string[];
+  keepOnly?: string[];
   collapseBlankLines?: boolean;
   maxAllowed?: number;
   reporter?: ReporterName;
@@ -27,6 +30,8 @@ const KNOWN_KEYS: readonly (keyof FileConfig)[] = [
   'gitignore',
   'keep',
   'defaultKeep',
+  'disableKeep',
+  'keepOnly',
   'collapseBlankLines',
   'maxAllowed',
   'reporter',
@@ -99,6 +104,20 @@ export function validateConfig(raw: unknown, source: string): FileConfig {
   }
   if (input.defaultKeep !== undefined) {
     config.defaultKeep = assertBoolean(source, 'defaultKeep', input.defaultKeep);
+  }
+  for (const key of ['disableKeep', 'keepOnly'] as const) {
+    if (input[key] === undefined) continue;
+    const names = assertStringArray(source, key, input[key]);
+    const unknown = names.filter(name => !KEEP_RULE_NAMES.includes(name));
+    if (unknown.length > 0) {
+      fail(
+        source,
+        `"${key}" contains unknown keep rule${unknown.length === 1 ? '' : 's'} ` +
+          `${unknown.map(name => JSON.stringify(name)).join(', ')}. ` +
+          `Valid rules: ${KEEP_RULE_NAMES.join(', ')}`
+      );
+    }
+    config[key] = names;
   }
   if (input.collapseBlankLines !== undefined) {
     config.collapseBlankLines = assertBoolean(

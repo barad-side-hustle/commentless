@@ -2,37 +2,89 @@ name: Release
 
 on:
   push:
-    tags: ['v*']
+    branches: [main]
+  workflow_dispatch:
 
 permissions:
-  contents: read
+  contents: write
   id-token: write
 
+concurrency:
+  group: release
+  cancel-in-progress: false
+
 jobs:
-  publish:
+  release:
     runs-on: ubuntu-latest
+    timeout-minutes: 10
     steps:
       - uses: actions/checkout@v4
         with:
-          persist-credentials: false
+          fetch-depth: 0
+
       - uses: actions/setup-node@v4
         with:
           node-version: '22.x'
           registry-url: https://registry.npmjs.org
+
       - uses: oven-sh/setup-bun@v2
-      - run: bun install --frozen-lockfile
-      - run: bun run lint
-      - run: bun run typecheck
-      - run: bun run build
-      - run: bun run test
-      - name: Check the tag matches package.json
+
+      - id: version
+        name: Read the version and ask npm whether it is new
         run: |
-          tag="${GITHUB_REF_NAME#v}"
-          pkg="$(node -p "require('./package.json').version")"
-          if [ "$tag" != "$pkg" ]; then
-            echo "tag v$tag does not match package.json $pkg"
+          version="$(node -p "require('./package.json').version")"
+          echo "version=$version" >> "$GITHUB_OUTPUT"
+          if npm view "commentless@$version" version --silent > /dev/null 2>&1; then
+            echo "published=true" >> "$GITHUB_OUTPUT"
+            echo "::notice title=Release::commentless@$version is already on npm — nothing to publish."
+          else
+            echo "published=false" >> "$GITHUB_OUTPUT"
+            echo "::notice title=Release::commentless@$version is new — publishing."
+          fi
+
+      - if: steps.version.outputs.published == 'false'
+        run: bun install --frozen-lockfile
+
+      - if: steps.version.outputs.published == 'false'
+        run: bun run lint
+
+      - if: steps.version.outputs.published == 'false'
+        run: bun run format
+
+      - if: steps.version.outputs.published == 'false'
+        run: bun run typecheck
+
+      - if: steps.version.outputs.published == 'false'
+        run: bun run build
+
+      - if: steps.version.outputs.published == 'false'
+        run: bun run test
+
+      - if: steps.version.outputs.published == 'false'
+        name: Run the CLI against its own source
+        run: bun run selfcheck
+
+      - if: steps.version.outputs.published == 'false'
+        name: Check the CLI reports the version it is about to publish
+        run: |
+          reported="$(node dist/bin.js --version)"
+          if [ "$reported" != "${{ steps.version.outputs.version }}" ]; then
+            echo "src/cli.ts reports $reported but package.json says ${{ steps.version.outputs.version }}"
             exit 1
           fi
-      - run: npm publish --access public --provenance
+
+      - if: steps.version.outputs.published == 'false'
+        run: npm publish --access public --provenance
         env:
           NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
+
+      - if: steps.version.outputs.published == 'false'
+        name: Tag the release
+        env:
+          GH_TOKEN: ${{ github.token }}
+          VERSION: ${{ steps.version.outputs.version }}
+        run: |
+          gh release create "v$VERSION" \
+            --title "v$VERSION" \
+            --generate-notes \
+            --target "$GITHUB_SHA"

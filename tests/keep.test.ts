@@ -1,5 +1,10 @@
 import { describe, expect, it } from 'vitest';
-import { resolveKeepRules } from '../src/core/keep.js';
+import {
+  KEEP_RULE_DESCRIPTIONS,
+  KEEP_RULE_NAMES,
+  resolveKeepRules,
+  UnknownKeepRuleError,
+} from '../src/core/keep.js';
 import { scan, strip } from './helpers.js';
 
 function keptBy(source: string, fileName = 'input.ts'): string[] {
@@ -104,5 +109,68 @@ describe('shebang', () => {
   it('is never treated as a comment', () => {
     const source = '#!/usr/bin/env node\n// gone\nconst a = 1;\n';
     expect(strip(source, 'bin.js')).toBe('#!/usr/bin/env node\nconst a = 1;\n');
+  });
+});
+
+describe('per-rule control', () => {
+  const source = (comment: string) => `${comment}\nconst a = 1;\n`;
+
+  it('lists every built-in rule with a description', () => {
+    expect(KEEP_RULE_NAMES).toContain('eslint');
+    expect(KEEP_RULE_NAMES).toContain('typescript');
+    for (const name of KEEP_RULE_NAMES) {
+      expect(KEEP_RULE_DESCRIPTIONS[name], name).toBeTruthy();
+    }
+  });
+
+  it('drops a single rule while the rest keep working', () => {
+    const rules = resolveKeepRules({ disable: ['typescript'] });
+    expect(strip(source('// @ts-expect-error stale'), 'input.ts', {}, rules)).toBe(
+      'const a = 1;\n'
+    );
+    expect(strip(source('// eslint-disable-next-line no-console'), 'input.ts', {}, rules)).toBe(
+      source('// eslint-disable-next-line no-console')
+    );
+  });
+
+  it('drops several rules at once', () => {
+    const rules = resolveKeepRules({ disable: ['eslint', 'typescript'] });
+    expect(strip(source('// eslint-disable-next-line x'), 'input.ts', {}, rules)).toBe(
+      'const a = 1;\n'
+    );
+    expect(strip(source('// @ts-ignore'), 'input.ts', {}, rules)).toBe('const a = 1;\n');
+    expect(strip(source('/*! legal */'), 'input.ts', {}, rules)).toBe(source('/*! legal */'));
+  });
+
+  it('keeps only the named rules', () => {
+    const rules = resolveKeepRules({ only: ['eslint'] });
+    expect(rules.map(rule => rule.name)).toEqual(['eslint']);
+    expect(strip(source('// eslint-disable-next-line x'), 'input.ts', {}, rules)).toBe(
+      source('// eslint-disable-next-line x')
+    );
+    expect(strip(source('// @ts-expect-error'), 'input.ts', {}, rules)).toBe('const a = 1;\n');
+    expect(strip(source('/*! legal */'), 'input.ts', {}, rules)).toBe('const a = 1;\n');
+  });
+
+  it('applies disable on top of only', () => {
+    const rules = resolveKeepRules({ only: ['eslint', 'typescript'], disable: ['typescript'] });
+    expect(rules.map(rule => rule.name)).toEqual(['eslint']);
+  });
+
+  it('keeps user patterns even when every built-in rule is off', () => {
+    const rules = resolveKeepRules({ only: [], userPatterns: ['https?://'] });
+    expect(strip(source('// eslint-disable-next-line x'), 'input.ts', {}, rules)).toBe(
+      'const a = 1;\n'
+    );
+    expect(strip(source('// see https://x.dev'), 'input.ts', {}, rules)).toBe(
+      source('// see https://x.dev')
+    );
+  });
+
+  it('rejects an unknown rule name and names the valid ones', () => {
+    expect(() => resolveKeepRules({ disable: ['eslintt'] })).toThrow(UnknownKeepRuleError);
+    expect(() => resolveKeepRules({ disable: ['eslintt'] })).toThrow(/unknown keep rule "eslintt"/);
+    expect(() => resolveKeepRules({ disable: ['eslintt'] })).toThrow(/Valid rules:.*typescript/);
+    expect(() => resolveKeepRules({ only: ['nope', 'nah'] })).toThrow(/unknown keep rules/);
   });
 });

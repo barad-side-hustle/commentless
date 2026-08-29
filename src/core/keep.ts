@@ -46,11 +46,55 @@ export function deserializeKeepRules(rules: readonly SerializedKeepRule[]): Keep
   }));
 }
 
+export const KEEP_RULE_NAMES: readonly string[] = DEFAULT_KEEP_RULES.map(rule => rule.name);
+
+export const KEEP_RULE_DESCRIPTIONS: Readonly<Record<string, string>> = {
+  commentless: 'commentless-keep and commentless-keep-next-line',
+  eslint: 'eslint-disable, eslint-enable, eslint-env',
+  'eslint-globals': '/* global … */ and /* globals … */',
+  typescript: '@ts-expect-error, @ts-ignore, @ts-nocheck, @ts-check',
+  'triple-slash': '/// <reference … />',
+  biome: 'biome-ignore',
+  prettier: 'prettier-ignore',
+  oxlint: 'oxlint-disable',
+  coverage: 'istanbul / c8 / v8 ignore, node:coverage',
+  'bundler-magic': 'webpackChunkName: and friends, @vite-ignore',
+  'pure-annotation': '@__PURE__, @__NO_SIDE_EFFECTS__, @__KEY__',
+  'jsx-pragma': '@jsx, @jsxImportSource, @jsxRuntime, @jsxFrag',
+  'test-environment': '@vitest-environment, @jest-environment',
+  license: '@license, @preserve, SPDX-License-Identifier',
+  bang: 'any /*! … */ comment',
+  'jsdoc-type': '@type, @satisfies, @typedef, @template, @overload, @import (.js family only)',
+};
+
+export class UnknownKeepRuleError extends Error {
+  constructor(names: readonly string[]) {
+    super(
+      `unknown keep rule${names.length === 1 ? '' : 's'} ${names.map(name => `"${name}"`).join(', ')}. ` +
+        `Valid rules: ${KEEP_RULE_NAMES.join(', ')}`
+    );
+  }
+}
+
+function assertKnown(names: readonly string[]): void {
+  const unknown = names.filter(name => !KEEP_RULE_NAMES.includes(name));
+  if (unknown.length > 0) throw new UnknownKeepRuleError(unknown);
+}
+
 export function resolveKeepRules(options: {
   defaults?: boolean;
   userPatterns?: readonly string[];
+  disable?: readonly string[];
+  only?: readonly string[];
 }): KeepRule[] {
-  const rules: KeepRule[] = options.defaults === false ? [] : [...DEFAULT_KEEP_RULES];
+  const disable = options.disable ?? [];
+  const only = options.only;
+  assertKnown([...disable, ...(only ?? [])]);
+
+  let rules: KeepRule[] = options.defaults === false ? [] : [...DEFAULT_KEEP_RULES];
+  if (only) rules = rules.filter(rule => only.includes(rule.name));
+  if (disable.length > 0) rules = rules.filter(rule => !disable.includes(rule.name));
+
   for (const pattern of options.userPatterns ?? []) {
     rules.push({ name: `config:${pattern}`, test: new RegExp(pattern) });
   }

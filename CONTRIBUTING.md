@@ -42,6 +42,12 @@ prose. `eslint-disable` is machinery. `@deprecated` is prose.
 
 ## Releasing
 
-1. Bump `version` in `package.json` and the `VERSION` constant in `src/cli.ts`.
-2. `git tag v<version> && git push --tags`.
-3. The release workflow verifies the tag against `package.json` and publishes with provenance.
+Releases are automatic. Bump `version` in `package.json` **and** the `VERSION` constant in
+`src/cli.ts` (the workflow fails the release if they disagree), then merge to `main`.
+
+The release workflow asks npm whether that version already exists. If it does, it does nothing.
+If it does not, it runs every gate — lint, format, typecheck, build, test, and the CLI against
+its own source — then publishes with provenance and cuts a GitHub release. So a normal push to
+`main` costs one `npm view` call, and a version bump costs a full release.
+
+This needs an `NPM_TOKEN` repository secret with publish rights.
