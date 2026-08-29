@@ -1,7 +1,8 @@
 import path from 'node:path';
 import { parseArgs } from 'node:util';
 import { createColors } from 'picocolors';
-import { ConfigError, loadConfig } from './config.js';
+import { ConfigError, CONFIG_FILE_NAME, type FileConfig, loadConfig } from './config.js';
+import { init } from './init.js';
 import { DEFAULT_EXTENSIONS } from './core/scan.js';
 import { discoverFiles, type DiscoveryMode } from './core/files.js';
 import { defaultConcurrency, run } from './core/run.js';
@@ -24,6 +25,7 @@ const HELP = `commentless ${VERSION}
 
 Usage
   commentless [paths...] [options]
+  commentless init [options]      Write a ${CONFIG_FILE_NAME} you can commit
 
 Mode
   --check                  Report only, never write. Exit 1 if a comment would be removed.
@@ -56,6 +58,10 @@ Output
   -q, --quiet              Summary only.
   -v, --verbose            Include kept-comment counts.
   --no-color               Disable colour.
+
+init
+  --force                  Overwrite an existing config file.
+  --strict                 Set maxAllowed to 0 instead of today's comment count.
 
 Other
   --concurrency <n>        Worker threads (default: cpus - 1).
@@ -127,6 +133,8 @@ export async function main(argv: readonly string[]): Promise<number> {
         concurrency: { type: 'string' },
         'no-cache': { type: 'boolean' },
         config: { type: 'string' },
+        force: { type: 'boolean' },
+        strict: { type: 'boolean' },
         help: { type: 'boolean', short: 'h' },
         version: { type: 'boolean' },
       },
@@ -169,7 +177,12 @@ export async function main(argv: readonly string[]): Promise<number> {
       throw new UsageError('--staged and --changed are mutually exclusive');
     }
 
-    const { config } = loadConfig(cwd, values.config);
+    const isInit = positionals[0] === 'init';
+    if (isInit && positionals.length > 1) {
+      throw new UsageError(`init takes no paths, got ${positionals.slice(1).join(' ')}`);
+    }
+
+    const { config } = isInit ? { config: {} as FileConfig } : loadConfig(cwd, values.config);
 
     const reporterName = (values.reporter ?? config.reporter ?? 'pretty') as ReporterName;
     if (!REPORTERS.includes(reporterName)) {
@@ -193,13 +206,31 @@ export async function main(argv: readonly string[]): Promise<number> {
       ...(keepOnly ? { only: keepOnly } : {}),
     });
 
-    const paths = positionals.length > 0 ? positionals : ['.'];
+    const paths = !isInit && positionals.length > 0 ? positionals : ['.'];
     const extensions = values.ext
       ? parseExtensions(values.ext)
       : (config.ext ?? [...DEFAULT_EXTENSIONS]);
     const ignore = [...(config.ignore ?? []), ...(values.ignore ?? [])];
     const ignoreFile = values['ignore-file'] ?? config.ignoreFile ?? '.commentlessignore';
     const gitignore = values['no-gitignore'] ? false : (config.gitignore ?? true);
+    const useColor = !values['no-color'] && process.stdout.isTTY === true && !process.env.NO_COLOR;
+
+    if (isInit) {
+      const result = await init({
+        cwd,
+        configPath: values.config,
+        force: values.force ?? false,
+        strict: values.strict ?? false,
+        color: useColor,
+        extensions,
+        ignore,
+        ignoreFile,
+        gitignore,
+        keep,
+      });
+      process.stdout.write(`${result.output}\n`);
+      return result.existed ? 2 : 0;
+    }
 
     if (values['list-files']) {
       const files = await discoverFiles({
@@ -243,7 +274,7 @@ export async function main(argv: readonly string[]): Promise<number> {
         cwd,
         quiet: values.quiet ?? false,
         verbose: values.verbose ?? false,
-        color: !values['no-color'] && process.stdout.isTTY === true && !process.env.NO_COLOR,
+        color: useColor,
       })}\n`
     );
 

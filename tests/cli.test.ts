@@ -243,3 +243,93 @@ describe('per-rule keep flags', () => {
     expect(result.stderr).toContain('unknown keep rule "nope"');
   });
 });
+
+describe('the init command', () => {
+  let box: Sandbox;
+
+  beforeEach(() => {
+    box = sandbox();
+  });
+
+  afterEach(() => box.cleanup());
+
+  it('writes a config and exits 0', async () => {
+    box.write('a.ts', '// note\nexport const a = 1;\n');
+    const result = await cli(['init'], box.dir);
+
+    expect(result.code).toBe(0);
+    expect(result.stdout).toContain('commentless.config.json');
+    expect(JSON.parse(readFileSync(`${box.dir}/commentless.config.json`, 'utf8'))).toMatchObject({
+      maxAllowed: 1,
+    });
+  });
+
+  it('makes the very next --check pass', async () => {
+    box.write('a.ts', '// one\n// two\nexport const a = 1;\n');
+    expect((await cli(['init'], box.dir)).code).toBe(0);
+    expect((await cli(['--check'], box.dir)).code).toBe(0);
+  });
+
+  it('exits 2 rather than clobbering an existing config', async () => {
+    box.write('commentless.config.json', '{"maxAllowed": 9}');
+    const result = await cli(['init'], box.dir);
+
+    expect(result.code).toBe(2);
+    expect(result.stdout).toContain('--force');
+    expect(JSON.parse(readFileSync(`${box.dir}/commentless.config.json`, 'utf8')).maxAllowed).toBe(
+      9
+    );
+  });
+
+  it('overwrites with --force', async () => {
+    box.write('commentless.config.json', '{"maxAllowed": 9}');
+    expect((await cli(['init', '--force'], box.dir)).code).toBe(0);
+    expect(JSON.parse(readFileSync(`${box.dir}/commentless.config.json`, 'utf8')).maxAllowed).toBe(
+      0
+    );
+  });
+
+  it('honours --strict', async () => {
+    box.write('a.ts', '// note\nexport const a = 1;\n');
+    expect((await cli(['init', '--strict'], box.dir)).code).toBe(0);
+    expect((await cli(['--check'], box.dir)).code).toBe(1);
+  });
+
+  it('carries --ext and --ignore into the written config', async () => {
+    const result = await cli(['init', '--ext', 'ts', '--ignore', 'vendor/**'], box.dir);
+    expect(result.code).toBe(0);
+    expect(JSON.parse(readFileSync(`${box.dir}/commentless.config.json`, 'utf8'))).toMatchObject({
+      ext: ['ts'],
+      ignore: ['vendor/**'],
+    });
+  });
+
+  it('writes to a --config path, creating the directory', async () => {
+    expect((await cli(['init', '--config', 'tools/cl.json'], box.dir)).code).toBe(0);
+    expect(readFileSync(`${box.dir}/tools/cl.json`, 'utf8')).toContain('maxAllowed');
+  });
+
+  it('does not choke on a missing --config path the way a normal run does', async () => {
+    box.write('a.ts', 'export const a = 1;\n');
+    expect((await cli(['--check', '--config', 'nope.json'], box.dir)).code).toBe(2);
+    expect((await cli(['init', '--config', 'nope.json'], box.dir)).code).toBe(0);
+  });
+
+  it('rejects paths after init', async () => {
+    const result = await cli(['init', 'src'], box.dir);
+    expect(result.code).toBe(2);
+    expect(result.stderr).toContain('init takes no paths');
+  });
+
+  it('never writes to the source files it scans', async () => {
+    const file = box.write('a.ts', '// note\nexport const a = 1;\n');
+    await cli(['init'], box.dir);
+    expect(readFileSync(file, 'utf8')).toBe('// note\nexport const a = 1;\n');
+  });
+
+  it('is documented in --help', async () => {
+    const result = await cli(['--help'], box.dir);
+    expect(result.stdout).toContain('commentless init');
+    expect(result.stdout).toContain('--strict');
+  });
+});

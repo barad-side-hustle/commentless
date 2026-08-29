@@ -33,6 +33,31 @@
   </p>
 </div>
 
+<!-- TL;DR -->
+
+## TL;DR
+
+```sh
+bunx commentless init     # write a config baselined to today's comment count
+bunx commentless --check  # exit 1 if a comment sneaks in — this is your CI gate
+bunx commentless          # delete them
+```
+
+- **It deletes comments.** Not with a regex — with the TypeScript compiler, so a `//` inside a
+  string, a regex literal, a template literal or JSX body text is text, not a casualty.
+- **It keeps the ones that do work.** `eslint-disable`, `@ts-expect-error`, `biome-ignore`,
+  `istanbul ignore`, `webpackChunkName:`, `@license`, shebangs. All 16 rules are named and
+  individually switchable — `--no-keep jsdoc-type`, `--keep-only eslint,typescript`.
+- **It fails CI.** `--check --reporter github` annotates every offending comment inline on the PR
+  diff. `--max-allowed <n>` lets you adopt gradually instead of in one 4 000-line PR.
+- **The point isn't tidiness.** A comment explaining an edge case is an unverified claim that
+  nothing breaks when it goes stale. Write it as an `it(...)` name instead: same sentence, but it
+  runs, it goes red when it stops being true, and you can't write it without covering the branch.
+  Coverage goes up, source files get denser, and every agent that reads your repo stops paying
+  tokens for prose nobody checks. → [the long version](#why-your-comments-belong-in-test-names)
+
+<p align="right">(<a href="#readme-top">back to top</a>)</p>
+
 <!-- TABLE OF CONTENTS -->
 <details>
   <summary>Table of Contents</summary>
@@ -45,11 +70,13 @@
         <li><a href="#built-with">Built With</a></li>
       </ul>
     </li>
+    <li><a href="#tldr">TL;DR</a></li>
     <li>
       <a href="#getting-started">Getting Started</a>
       <ul>
         <li><a href="#prerequisites">Prerequisites</a></li>
         <li><a href="#installation">Installation</a></li>
+        <li><a href="#commentless-init">commentless init</a></li>
       </ul>
     </li>
     <li>
@@ -243,6 +270,37 @@ Then, in `package.json`:
 }
 ```
 
+### commentless init
+
+Do not hand-write the config. `init` scans the repo, writes a `commentless.config.json`, and
+**baselines `maxAllowed` to the number of comments you have right now** — so the gate you just
+added passes on the very first run, and you ratchet it down at your own pace instead of opening a
+4 000-line PR nobody will review.
+
+```console
+$ commentless init
+✔ Wrote commentless.config.json
+
+312 files scanned, 41 strippable comments found.
+maxAllowed is set to 41 so the gate passes today. Ratchet it down as you
+move those explanations into test names — that is the whole point.
+
+Next:
+  1. "comments:check": "commentless --check --reporter github" in package.json
+  2. run it in CI on every pull request
+  3. commentless --write when you are ready to remove them
+```
+
+| Flag              | Effect                                                                        |
+| ----------------- | ----------------------------------------------------------------------------- |
+| `--strict`        | Set `maxAllowed` to `0` instead of today's count. For greenfield repos.       |
+| `--force`         | Overwrite an existing config. Without it, `init` exits 2 and touches nothing. |
+| `--config <path>` | Write somewhere other than `./commentless.config.json`.                       |
+
+`--ext` and `--ignore` are carried into the written file, so
+`commentless init --ext ts,tsx --ignore 'db/generated/**'` gets you something you can commit as-is.
+It never writes to your source files — only to the config.
+
 <p align="right">(<a href="#readme-top">back to top</a>)</p>
 
 <!-- USAGE EXAMPLES -->
@@ -251,6 +309,7 @@ Then, in `package.json`:
 
 ```
 commentless [paths...] [options]
+commentless init [options]
 ```
 
 **Mode**
@@ -496,6 +555,7 @@ thank you by saying nothing, which is how reviewers say thank you.
 - [x] Worker pool + clean-file cache
 - [x] `--max-allowed` ratchet for gradual adoption
 - [x] Per-rule `--no-keep` / `--keep-only` control over the built-in allowlist
+- [x] `commentless init` — a config baselined to the repo's current comment count
 - [x] Publish to npm automatically on every version bump landing on `main`
 - [ ] `--to-test-names` — draft `it(...)` stubs from the comments it is about to delete
 - [ ] Vue SFC and Svelte support

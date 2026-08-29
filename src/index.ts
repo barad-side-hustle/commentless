@@ -13,5 +13,6 @@ export {
   validateConfig,
   type FileConfig,
 } from './config.js';
+export { defaultConfig, init, type InitOptions, type InitResult } from './init.js';
 export { main } from './cli.js';
 export type * from './types.js';
