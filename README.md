@@ -1,95 +1,253 @@
-# commentless
+<a id="readme-top"></a>
 
-Strip comments from JavaScript and TypeScript with a real parser, **keep the ones that do work**, and fail CI when new ones appear.
+<!-- PROJECT SHIELDS -->
 
-```bash
-bunx commentless           # rewrite files in place
-bunx commentless --check   # exit 1 if any comment would be removed
+[![Contributors][contributors-shield]][contributors-url]
+[![Forks][forks-shield]][forks-url]
+[![Stargazers][stars-shield]][stars-url]
+[![Issues][issues-shield]][issues-url]
+[![MIT License][license-shield]][license-url]
+[![npm][npm-shield]][npm-url]
+
+<!-- PROJECT LOGO -->
+<br />
+<div align="center">
+
+<h1 align="center">commentless</h1>
+
+  <p align="center">
+    Your code does not need a narrator.
+    <br />
+    Strip comments from JavaScript and TypeScript with a real parser, keep the ones that
+    actually do work, and fail CI when someone sneaks a new one in.
+    <br />
+    <br />
+    <a href="#usage"><strong>Explore the flags »</strong></a>
+    <br />
+    <br />
+    <a href="#why-your-comments-belong-in-test-names">The philosophy</a>
+    &middot;
+    <a href="https://github.com/barad-side-hustle/commentless/issues/new?labels=bug">Report Bug</a>
+    &middot;
+    <a href="https://github.com/barad-side-hustle/commentless/issues/new?labels=enhancement">Request Feature</a>
+  </p>
+</div>
+
+<!-- TABLE OF CONTENTS -->
+<details>
+  <summary>Table of Contents</summary>
+  <ol>
+    <li>
+      <a href="#about-the-project">About The Project</a>
+      <ul>
+        <li><a href="#why-your-comments-belong-in-test-names">Why your comments belong in test names</a></li>
+        <li><a href="#why-not-strip-comments-or-decomment">Why not strip-comments or decomment</a></li>
+        <li><a href="#built-with">Built With</a></li>
+      </ul>
+    </li>
+    <li>
+      <a href="#getting-started">Getting Started</a>
+      <ul>
+        <li><a href="#prerequisites">Prerequisites</a></li>
+        <li><a href="#installation">Installation</a></li>
+      </ul>
+    </li>
+    <li>
+      <a href="#usage">Usage</a>
+      <ul>
+        <li><a href="#comments-that-survive">Comments that survive</a></li>
+        <li><a href="#configuration">Configuration</a></li>
+        <li><a href="#in-ci">In CI</a></li>
+        <li><a href="#performance">Performance</a></li>
+        <li><a href="#programmatic-api">Programmatic API</a></li>
+      </ul>
+    </li>
+    <li><a href="#roadmap">Roadmap</a></li>
+    <li><a href="#contributing">Contributing</a></li>
+    <li><a href="#license">License</a></li>
+    <li><a href="#contact">Contact</a></li>
+    <li><a href="#acknowledgments">Acknowledgments</a></li>
+  </ol>
+</details>
+
+<!-- ABOUT THE PROJECT -->
+
+## About The Project
+
+Every codebase has one. The comment that says `// increment i by 1` above `i++`. The block that
+confidently describes a function that was rewritten in 2023. The `// TODO: fix this properly`
+signed by someone who left the company before your onboarding call.
+
+Comments are the only part of your repo that nothing verifies. They compile whether or not they
+are true, they survive every refactor that invalidates them, and the linter will never tell you
+that the paragraph above `parseUser` now describes a function called `parseOrder`.
+
+Some teams decide the honest fix is to have none of them. The reasoning goes in commit messages,
+PR descriptions, docs, and — the good part — **test names**. Enforcing that by hand does not work,
+because "delete your comments" is the single most ignorable code review note ever written.
+
+`commentless` enforces it. And, unlike a regex, it knows the difference between a comment and a
+comment-shaped thing:
+
+```ts
+const url = 'https://example.com'; //   ← the // in the string is safe
+const re = /\/\/ not a comment/;   //   ← so is this one
+<div>see the // in this copy</div> //   ← and this one
+// this one is not safe            //   ← correct
 ```
 
-Some teams want their source to carry no commentary — the reasoning lives in commit messages, PR descriptions and docs, so it can't rot in place. Enforcing that by hand does not work. `commentless` enforces it, and it is careful about the comments that are not commentary.
+It parses with the TypeScript compiler, so string literals, regex literals, template literals and
+JSX body text are text. Not comments. Not casualties.
 
----
+<p align="right">(<a href="#readme-top">back to top</a>)</p>
 
-## Why not `strip-comments` or `decomment`?
+### Why your comments belong in test names
 
-Both are libraries, not CLIs, both are regex/lexer based, and both have been unmaintained since 2022.
+This is the part that is actually a design philosophy and not a CLI flag.
+
+When you write a comment explaining an edge case, you are writing a **claim**:
+
+```ts
+// The billing API answers 200 with an empty body when the user has never
+// subscribed, so we have to null-check before parsing.
+if (!body) return null;
+```
+
+That claim is unverified prose. Nothing breaks when it becomes false. Nobody is paged when the API
+starts returning 204. It sits there, technically a lie, indefinitely, and the next engineer
+believes it because it is written down in the same file as the code.
+
+Write the exact same sentence as a test name and it stops being a claim and starts being a
+**guarantee**:
+
+```ts
+it('returns null when billing answers 200 with an empty body for a never-subscribed user', ...)
+```
+
+Same words. Same reader. But now:
+
+- **It runs.** If the behaviour changes, the sentence goes red. A stale test name is a failing
+  build; a stale comment is a Tuesday.
+- **It is discoverable.** `bun run test` prints your entire edge-case catalogue, in order, for
+  free. No `grep -r "// NOTE"`.
+- **It drags coverage up behind it.** You cannot name an edge case in a test without writing the
+  test. Every comment you migrate is a branch you now cover. This is the cheapest coverage
+  strategy in existence: stop explaining edge cases and start asserting them.
+- **It survives.** Comments get deleted in refactors because they look like decoration. Deleting
+  a test is a decision someone has to defend in review.
+
+#### The token argument, since you are going to ask
+
+Your codebase is read by agents now. Constantly. Every context window, every review, every
+"where is this handled", every retrieval hit. Comments are the part of that payload with the
+worst ratio in the whole repo: **you pay tokens for them on every single read, forever, and they
+buy zero verification.**
+
+An 8-line block comment explaining a race condition costs the same tokens whether it is accurate
+or three refactors out of date. Multiply by every file, every read, every agent, every day.
+
+The same 8 lines as four `it(...)` names cost tokens too — but they live in a file the model
+usually is not reading, they are _executable_, and they make the source file the agent _is_
+reading smaller and denser. Less noise per token. A source file that is 100% code reads like an
+API; a source file that is 40% prose reads like a wiki someone abandoned.
+
+So the trade is:
+
+|                                               | comment | test name |
+| --------------------------------------------- | ------- | --------- |
+| Explains the edge case                        | ✅      | ✅        |
+| Can be wrong forever                          | ✅      | ❌        |
+| Runs in CI                                    | ❌      | ✅        |
+| Improves coverage                             | ❌      | ✅        |
+| Costs tokens on every read of the source file | ✅      | ❌        |
+| Survives a refactor                           | 🤷      | ✅        |
+
+If a piece of code is complicated enough to need a paragraph, it is complicated enough to need a
+test. Write the test. Name it the paragraph. Delete the paragraph.
+
+`commentless` is the thing that makes sure you actually did.
+
+> [!NOTE]
+> This is a policy, not a religion. Some comments are load-bearing machinery, not prose —
+> `eslint-disable`, `@ts-expect-error`, licence headers. Those are kept by default. See
+> [Comments that survive](#comments-that-survive). And when you genuinely need one, mark it
+> `// commentless-keep` and move on with your life.
+
+<p align="right">(<a href="#readme-top">back to top</a>)</p>
+
+### Why not strip-comments or decomment
+
+Both are libraries, not CLIs, both are regex/lexer based, and both have been unmaintained since 2022. Nobody has shipped the thing that actually matters — a check mode.
 
 |                                            | commentless | strip-comments | decomment |
 | ------------------------------------------ | :---------: | :------------: | :-------: |
-| CLI (`bunx` / `npx`)                       |     ✅      |       ❌       |    ❌     |
-| `--check` mode for CI                      |     ✅      |       ❌       |    ❌     |
+| Runs as a CLI (`bunx` / `npx`)             |     ✅      |       ❌       |    ❌     |
+| `--check` mode that fails CI               |     ✅      |       ❌       |    ❌     |
 | TypeScript / TSX / JSX aware               |     ✅      |       ❌       |    ❌     |
 | Keeps `eslint-disable`, `@ts-expect-error` |     ✅      |       ❌       |    ❌     |
 | Safe inside strings, regex, templates      |     ✅      |    partial     |  partial  |
-| GitHub inline annotations                  |     ✅      |       ❌       |    ❌     |
+| GitHub inline PR annotations               |     ✅      |       ❌       |    ❌     |
+| Maintained this decade                     |     ✅      |       ❌       |    ❌     |
 
-`commentless` parses with the TypeScript compiler, so a `//` inside a string literal, a regex literal, a template literal, or JSX body text is text — not a comment.
+<p align="right">(<a href="#readme-top">back to top</a>)</p>
 
-```ts
-const url = 'https://example.com'; //   ← the // in the string is never touched
-const re = /\/\/ not a comment/;   //   ← nor this one
-<div>see the // in this copy</div> //   ← nor this one
+### Built With
+
+[![TypeScript][typescript-shield]][typescript-url]
+[![Node.js][node-shield]][node-url]
+[![Vitest][vitest-shield]][vitest-url]
+[![Bun][bun-shield]][bun-url]
+
+Four dependencies, deliberately. `bunx` cold start is the product, and nobody wants to download a
+dependency tree to delete some slashes.
+
+<p align="right">(<a href="#readme-top">back to top</a>)</p>
+
+<!-- GETTING STARTED -->
+
+## Getting Started
+
+### Prerequisites
+
+Node 20 or newer. That is the entire list.
+
+```sh
+node --version
 ```
 
----
+### Installation
 
-## Install
+There is nothing to install. Point it at your repo and find out how bad it is:
 
-Nothing to install — run it directly:
-
-```bash
+```sh
 bunx commentless --check      # bun
 npx  commentless --check      # npm
 pnpm dlx commentless --check  # pnpm
 ```
 
-Or add it to a project:
+Ready to commit to the bit:
 
-```bash
+```sh
 bun add -d commentless
-npm i -D commentless
+npm  i  -D commentless
 ```
 
-Requires Node 20+.
-
----
-
-## Comments that are kept
-
-Deleting a directive comment is a bug, not a cleanup. These survive by default:
-
-| Group        | Examples                                                                                                                                         |
-| ------------ | ------------------------------------------------------------------------------------------------------------------------------------------------ |
-| Linters      | `eslint-disable*`, `eslint-enable`, `eslint-env`, `/* global */`, `biome-ignore`, `prettier-ignore`, `oxlint-disable`                            |
-| Type checker | `@ts-expect-error`, `@ts-ignore`, `@ts-nocheck`, `/// <reference … />`                                                                           |
-| Coverage     | `istanbul ignore`, `c8 ignore`, `v8 ignore`, `node:coverage`                                                                                     |
-| Bundlers     | `webpackChunkName:` and friends, `@vite-ignore`, `/* @__PURE__ */`, `@__NO_SIDE_EFFECTS__`                                                       |
-| Pragmas      | `@jsx`, `@jsxImportSource`, `@jsxRuntime`, `@vitest-environment`, `@jest-environment`                                                            |
-| JSDoc types  | `@type`, `@satisfies`, `@typedef`, `@template`, `@overload`, `@import` — in `.js`/`.jsx`/`.mjs`/`.cjs` only, where they actually drive inference |
-| Legal        | `@license`, `@preserve`, `SPDX-License-Identifier`, any `/*! … */`                                                                               |
-| Shebang      | `#!/usr/bin/env node`                                                                                                                            |
-
-Add your own with `--keep <regex>` (repeatable) or `keep` in the config file. A common pair:
+Then, in `package.json`:
 
 ```jsonc
-{ "keep": ["https?://", "@(public|internal)\\b"] }
+{
+  "scripts": {
+    "comments:remove": "commentless --write",
+    "comments:check": "commentless --check --reporter github",
+  },
+}
 ```
 
-Disable the built-in list with `--no-default-keep`. You almost certainly do not want to.
+<p align="right">(<a href="#readme-top">back to top</a>)</p>
 
-### Inline escapes
+<!-- USAGE EXAMPLES -->
 
-```ts
-// commentless-keep  this one comment stays
-// commentless-keep-next-line
-// …and so does this one
-// commentless-ignore-file  ← anywhere in the first 4 KB: skip the file entirely
-```
-
----
-
-## CLI
+## Usage
 
 ```
 commentless [paths...] [options]
@@ -121,7 +279,7 @@ commentless [paths...] [options]
 | Flag                     | Effect                                                     |
 | ------------------------ | ---------------------------------------------------------- |
 | `--keep <regex>`         | Keep comments matching this pattern. Repeatable.           |
-| `--no-default-keep`      | Drop the built-in directive allowlist.                     |
+| `--no-default-keep`      | Drop the built-in directive allowlist. Live dangerously.   |
 | `--collapse-blank-lines` | Also trim trailing whitespace and collapse 3+ blank lines. |
 
 **Output**
@@ -149,11 +307,43 @@ commentless [paths...] [options]
 | `1`  | Comments found under `--check`, or a file could not be processed. |
 | `2`  | Bad usage or invalid configuration.                               |
 
----
+### Comments that survive
 
-## Config
+Deleting a directive is a bug, not a cleanup. A tool that strips your `// eslint-disable-next-line`
+and then hands the build to ESLint is not a tool, it is a practical joke. These are kept by
+default:
 
-`commentless.config.json` in the project root (or any ancestor), or a `"commentless"` key in `package.json`. Every CLI flag overrides the file.
+| Group        | Examples                                                                                                                                         |
+| ------------ | ------------------------------------------------------------------------------------------------------------------------------------------------ |
+| Linters      | `eslint-disable*`, `eslint-enable`, `eslint-env`, `/* global */`, `biome-ignore`, `prettier-ignore`, `oxlint-disable`                            |
+| Type checker | `@ts-expect-error`, `@ts-ignore`, `@ts-nocheck`, `/// <reference … />`                                                                           |
+| Coverage     | `istanbul ignore`, `c8 ignore`, `v8 ignore`, `node:coverage`                                                                                     |
+| Bundlers     | `webpackChunkName:` and friends, `@vite-ignore`, `/* @__PURE__ */`, `@__NO_SIDE_EFFECTS__`                                                       |
+| Pragmas      | `@jsx`, `@jsxImportSource`, `@jsxRuntime`, `@vitest-environment`, `@jest-environment`                                                            |
+| JSDoc types  | `@type`, `@satisfies`, `@typedef`, `@template`, `@overload`, `@import` — in `.js`/`.jsx`/`.mjs`/`.cjs` only, where they actually drive inference |
+| Legal        | `@license`, `@preserve`, `SPDX-License-Identifier`, any `/*! … */`                                                                               |
+| Shebang      | `#!/usr/bin/env node`                                                                                                                            |
+
+Add your own with `--keep <regex>` (repeatable) or `keep` in the config. A common pair — "a link is
+allowed, an essay is not":
+
+```jsonc
+{ "keep": ["https?://", "@(public|internal)\\b"] }
+```
+
+**Inline escapes**, for the three comments a year that earn their place:
+
+```ts
+// commentless-keep  this one stays, and you will justify it in review
+// commentless-keep-next-line
+// …and so does this one
+// commentless-ignore-file  ← anywhere in the first 4 KB: skip the file entirely
+```
+
+### Configuration
+
+`commentless.config.json` in the project root (or any ancestor), or a `"commentless"` key in
+`package.json`. Every CLI flag overrides the file.
 
 ```json
 {
@@ -166,13 +356,13 @@ commentless [paths...] [options]
 }
 ```
 
-The config is JSON on purpose. A `.ts` config would be a file this tool strips comments out of.
+The config is JSON on purpose. A `.ts` config would be a file this tool strips the comments out
+of, which is the kind of recursion that ruins an afternoon.
 
----
+### In CI
 
-## In CI
-
-`--reporter github` emits workflow annotations, so every offending comment shows up inline on the PR diff.
+`--reporter github` emits workflow annotations, so every offending comment shows up inline on the
+PR diff, right where its author can feel something about it.
 
 ```yaml
 - uses: oven-sh/setup-bun@v2
@@ -187,21 +377,22 @@ Scope it to the PR diff instead of the whole repo (needs `fetch-depth: 0`):
 - run: bunx commentless@0.1.0 . --check --changed --base origin/main --reporter github
 ```
 
-Adopting on a repo that already has comments? Set a ceiling and ratchet it down:
+Adopting on a repo with 2 000 existing comments? Do not fix them in one PR — nobody will review
+that. Set a ceiling and ratchet it down:
 
-```bash
-commentless --check --max-allowed 240
+```sh
+commentless --check --max-allowed 2000   # today
+commentless --check --max-allowed 1500   # next sprint, after the migration to test names
+commentless --check --max-allowed 0      # eventually
 ```
 
-### Pre-commit
+**Pre-commit:**
 
-```bash
+```sh
 commentless --staged --write
 ```
 
----
-
-## Performance
+### Performance
 
 Measured on a 2 225-file Next.js repository, M-series Mac, 10 worker threads:
 
@@ -213,14 +404,16 @@ Measured on a 2 225-file Next.js repository, M-series Mac, 10 worker threads:
 
 Where the time does not go:
 
-- **Discovery** uses `git ls-files --cached --others --exclude-standard` inside a repository, so `.gitignore` is honoured for free and `node_modules` is never walked.
-- **A substring pre-filter** skips the parser entirely for any file with no `//` or `/*` — which is most files once the tool has done its job.
-- **One AST walk** collects trivia and JSX comment nodes in a single pass.
-- **A clean-file cache** under `node_modules/.cache/commentless` keys on size + mtime, so unchanged files are skipped outright. Cache with `actions/cache` in CI, or disable it with `--no-cache`.
+- **Discovery** uses `git ls-files --cached --others --exclude-standard` inside a repository, so
+  `.gitignore` is honoured for free and `node_modules` is never walked.
+- **A substring pre-filter** skips the parser entirely for any file with no `//` or `/*` — which
+  is most of them, once the tool has done its job.
+- **One AST walk** collects comment trivia and JSX comment nodes in a single pass.
+- **A clean-file cache** under `node_modules/.cache/commentless` keys on size + mtime, so
+  unchanged files are skipped outright. Cache it with `actions/cache`, or disable with
+  `--no-cache`.
 
----
-
-## Programmatic API
+### Programmatic API
 
 ```ts
 import { scanSource, stripComments, resolveKeepRules, run } from 'commentless';
@@ -233,9 +426,7 @@ const result = await run({ cwd: process.cwd(), mode: 'check', extensions: ['ts',
 process.exitCode = result.exitCode;
 ```
 
----
-
-## What it does to your diff
+### What it does to your diff
 
 Removing a comment removes the whitespace it owned, and nothing else:
 
@@ -246,10 +437,120 @@ Removing a comment removes the whitespace it owned, and nothing else:
 +const b = 2;
 ```
 
-A comment alone on its line takes the line with it. A trailing comment takes the space in front of it. Every other line stays byte-identical — CRLF endings, BOM, and existing blank runs included — unless you ask for `--collapse-blank-lines`. Running it twice is a no-op.
+A comment alone on its line takes the line with it. A trailing comment takes the space in front of
+it. Every other line stays byte-identical — CRLF endings, BOM and existing blank runs included —
+unless you ask for `--collapse-blank-lines`. Running it twice is a no-op. Your reviewer will
+thank you by saying nothing, which is how reviewers say thank you.
 
----
+<p align="right">(<a href="#readme-top">back to top</a>)</p>
 
-## Licence
+<!-- ROADMAP -->
 
-MIT
+## Roadmap
+
+- [x] AST-accurate detection for the whole JS/TS family
+- [x] Directive allowlist so CI does not eat itself
+- [x] `--check` mode with GitHub inline annotations
+- [x] Worker pool + clean-file cache
+- [x] `--max-allowed` ratchet for gradual adoption
+- [ ] `--to-test-names` — draft `it(...)` stubs from the comments it is about to delete
+- [ ] Vue SFC and Svelte support
+- [ ] An ESLint rule, for teams that want the squiggle in the editor
+
+See the [open issues][issues-url] for the full list of proposed features and known issues.
+
+<p align="right">(<a href="#readme-top">back to top</a>)</p>
+
+<!-- CONTRIBUTING -->
+
+## Contributing
+
+Contributions are what make the open source community such an amazing place to learn, inspire, and
+create. Any contributions you make are **greatly appreciated**.
+
+If you have a suggestion that would make this better, please fork the repo and create a pull
+request. You can also simply open an issue with the tag "enhancement".
+
+1. Fork the Project
+2. Create your Feature Branch (`git checkout -b feature/AmazingFeature`)
+3. Commit your Changes (`git commit -m 'feat: add some AmazingFeature'`)
+4. Push to the Branch (`git push origin feature/AmazingFeature`)
+5. Open a Pull Request
+
+```sh
+bun install
+bun run test   # 137 tests
+bun run ci     # lint, format, typecheck, test, build, and the tool run against its own source
+```
+
+Two house rules, both self-explanatory given the above:
+
+- **New behaviour needs a test whose name is the explanation.** If you were about to write a
+  comment about it, that sentence is the test name. See
+  [the philosophy](#why-your-comments-belong-in-test-names).
+- **New keep rules go in `src/core/keep.ts`** and get a row in the `load-bearing comments survive`
+  table in `tests/keep.test.ts`. Rules that only matter in JavaScript take an `extensions` list.
+
+Yes, the repo passes its own `--check`. It would be a bit much otherwise.
+
+### Top contributors
+
+<a href="https://github.com/barad-side-hustle/commentless/graphs/contributors">
+  <img src="https://contrib.rocks/image?repo=barad-side-hustle/commentless" alt="contrib.rocks image" />
+</a>
+
+<p align="right">(<a href="#readme-top">back to top</a>)</p>
+
+<!-- LICENSE -->
+
+## License
+
+Distributed under the MIT License. See `LICENSE` for more information.
+
+<p align="right">(<a href="#readme-top">back to top</a>)</p>
+
+<!-- CONTACT -->
+
+## Contact
+
+Alon Barad — [@alon710](https://github.com/alon710)
+
+Project Link: [https://github.com/barad-side-hustle/commentless](https://github.com/barad-side-hustle/commentless)
+
+<p align="right">(<a href="#readme-top">back to top</a>)</p>
+
+<!-- ACKNOWLEDGMENTS -->
+
+## Acknowledgments
+
+- [TypeScript Compiler API](https://github.com/microsoft/TypeScript/wiki/Using-the-Compiler-API) — for knowing what a comment is
+- [tinyglobby](https://github.com/SuperchupuDev/tinyglobby)
+- [ignore](https://github.com/kaelzhang/node-ignore)
+- [picocolors](https://github.com/alexeyraspopov/picocolors)
+- [Best-README-Template](https://github.com/othneildrew/Best-README-Template)
+- Every comment that said `// this should never happen` immediately above the thing that happened
+
+<p align="right">(<a href="#readme-top">back to top</a>)</p>
+
+<!-- MARKDOWN LINKS & IMAGES -->
+
+[contributors-shield]: https://img.shields.io/github/contributors/barad-side-hustle/commentless.svg?style=for-the-badge
+[contributors-url]: https://github.com/barad-side-hustle/commentless/graphs/contributors
+[forks-shield]: https://img.shields.io/github/forks/barad-side-hustle/commentless.svg?style=for-the-badge
+[forks-url]: https://github.com/barad-side-hustle/commentless/network/members
+[stars-shield]: https://img.shields.io/github/stars/barad-side-hustle/commentless.svg?style=for-the-badge
+[stars-url]: https://github.com/barad-side-hustle/commentless/stargazers
+[issues-shield]: https://img.shields.io/github/issues/barad-side-hustle/commentless.svg?style=for-the-badge
+[issues-url]: https://github.com/barad-side-hustle/commentless/issues
+[license-shield]: https://img.shields.io/github/license/barad-side-hustle/commentless.svg?style=for-the-badge
+[license-url]: https://github.com/barad-side-hustle/commentless/blob/main/LICENSE
+[npm-shield]: https://img.shields.io/npm/v/commentless.svg?style=for-the-badge
+[npm-url]: https://www.npmjs.com/package/commentless
+[typescript-shield]: https://img.shields.io/badge/TypeScript-3178C6?style=for-the-badge&logo=typescript&logoColor=white
+[typescript-url]: https://www.typescriptlang.org/
+[node-shield]: https://img.shields.io/badge/Node.js-5FA04E?style=for-the-badge&logo=nodedotjs&logoColor=white
+[node-url]: https://nodejs.org/
+[vitest-shield]: https://img.shields.io/badge/Vitest-6E9F18?style=for-the-badge&logo=vitest&logoColor=white
+[vitest-url]: https://vitest.dev/
+[bun-shield]: https://img.shields.io/badge/Bun-000000?style=for-the-badge&logo=bun&logoColor=white
+[bun-url]: https://bun.sh/
