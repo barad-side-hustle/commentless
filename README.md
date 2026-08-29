@@ -150,6 +150,7 @@ And the part a regex gets wrong. Only the last line here is a comment, and only 
       <a href="#usage">Usage</a>
       <ul>
         <li><a href="#comments-that-survive">Comments that survive</a></li>
+        <li><a href="#from-comments-to-test-names">From comments to test names</a></li>
         <li><a href="#configuration">Configuration</a></li>
         <li><a href="#reporters">Reporters</a></li>
         <li><a href="#in-ci">In CI</a></li>
@@ -443,20 +444,22 @@ commentless init [options]
 
 **Output**
 
-| Flag                | Effect                                                         |
-| ------------------- | -------------------------------------------------------------- |
-| `--reporter <name>` | `pretty` (default), `json`, `github`, `summary`.               |
-| `--max-allowed <n>` | `--check` passes while removable comments are at or under `n`. |
-| `-q, --quiet`       | Summary only.                                                  |
-| `--no-color`        | Disable colour.                                                |
+| Flag                     | Effect                                                         |
+| ------------------------ | -------------------------------------------------------------- |
+| `--reporter <name>`      | `pretty` (default), `json`, `github`, `summary`.               |
+| `--max-allowed <n>`      | `--check` passes while removable comments are at or under `n`. |
+| `--to-test-names <file>` | Draft an `it.todo(...)` per comment into `<file>`. See below.  |
+| `-q, --quiet`            | Summary only.                                                  |
+| `--no-color`             | Disable colour.                                                |
 
 **Other**
 
-| Flag                | Effect                               |
-| ------------------- | ------------------------------------ |
-| `--concurrency <n>` | Worker threads. Default `cpus - 1`.  |
-| `--no-cache`        | Skip the clean-file cache.           |
-| `--config <path>`   | Path to a `commentless.config.json`. |
+| Flag                | Effect                                                     |
+| ------------------- | ---------------------------------------------------------- |
+| `--concurrency <n>` | Worker threads. Default `cpus - 1`.                        |
+| `--no-cache`        | Skip the clean-file cache.                                 |
+| `--config <path>`   | Path to a `commentless.config.json`.                       |
+| `--force`           | Overwrite the `--to-test-names` file if it already exists. |
 
 **Exit codes**
 
@@ -533,6 +536,117 @@ allowed, an essay is not":
 // …and so does this one
 // commentless-ignore-file  ← anywhere in the first 4 KB: skip the file entirely
 ```
+
+### From comments to test names
+
+`--to-test-names <file>` is the migration tool for
+[the philosophy](#why-your-comments-belong-in-test-names). It takes every comment it is about to
+delete and drafts it as an `it.todo(...)`, grouped into one `describe` per source file, so the
+explanations have somewhere to land before the deletion lands.
+
+Pair it with `--check` to look before you leap — nothing under `src/` is touched:
+
+```sh
+commentless --check --to-test-names tests/comments.todo.test.ts
+```
+
+Given this:
+
+```ts
+/**
+ * Looks up the current subscription.
+ * @param id the user id
+ */
+export async function plan(id: string) {
+  // The billing API answers 200 with an empty body when the user has never
+  // subscribed, so we have to null-check before parsing.
+  const body = await fetchUser(id);
+  if (!body) return null;
+
+  // TODO: handle the grandfathered enterprise tier
+  // const legacy = LEGACY_TIERS[body.tier];
+
+  // ----------------------------------------------------------
+  // Retry once. Stripe rate-limits at 100rps and we burst past
+  // it during the nightly reconcile.
+  // ----------------------------------------------------------
+  return body.plan;
+}
+```
+
+you get this:
+
+```ts
+import { describe, it } from 'vitest';
+
+describe('src/billing.ts', () => {
+  it.todo('looks up the current subscription');
+  it.todo(
+    'the billing API answers 200 with an empty body when the user has never subscribed, so we have to null-check before parsing'
+  );
+  it.todo('handle the grandfathered enterprise tier');
+  it.todo('retry once');
+  it.todo('stripe rate-limits at 100rps and we burst past it during the nightly reconcile');
+});
+```
+
+Note what happened on the way:
+
+- **Wrapped line comments are rejoined.** A run of `//` lines at the same indent is one claim, so
+  it becomes one stub, not five.
+- **Sentences are split.** A paragraph explaining three things becomes three stubs, because it was
+  always three tests.
+- **Prose is trimmed into a test name.** `TODO:`/`FIXME:`/`NOTE:` labels, banner rules, jsdoc
+  `@param`/`@returns` lines and the trailing full stop all come off, and a leading capital is
+  lowercased so it reads after `it(`.
+- **Commented-out code is skipped**, not drafted. `// const legacy = …` is not an edge case
+  anybody needs a test for. The summary line tells you how many were dropped.
+
+Then do the actual work: turn each `it.todo` into a real test, deleting the ones that were never
+claims worth keeping. When the file is honest, run `commentless --write` and the comments go.
+
+#### Hand the skeleton to an agent
+
+Filling in a hundred `it.todo` stubs is exactly the work you should not be doing by hand, and
+[for the reasons in the philosophy](#the-token-argument-since-you-are-going-to-ask) it is work an
+agent is unusually good at: every stub names one behaviour, and the file it belongs to is written
+on the `describe` above it. Point your coding agent at the draft and paste this:
+
+```text
+tests/comments.todo.test.ts is a generated skeleton. Every it.todo in it is a
+sentence that used to be a comment in the file named by its describe block.
+
+Work through the skeleton one describe at a time:
+
+1. Read the source file named in the describe block.
+2. For each it.todo, decide what it actually claims about that file's
+   behaviour, then replace it with a real test that would fail if the claim
+   stopped being true. Keep the name — it is the explanation. Reword it only
+   to match what you actually asserted.
+3. If a stub is not a testable claim about the code (a note to a past
+   colleague, a stale aside, a fact about some other system), delete it and
+   tell me which ones you deleted and why. Do not invent a test to justify
+   keeping one.
+4. Do not add explanatory comments to the tests or back into the source. The
+   test name is the explanation. That is the whole point of the exercise.
+
+Then run the suite and show me the failures. Do not run `commentless --write`
+— I will do that once the tests are green.
+```
+
+The last line matters. The stubs are the only surviving copy of those explanations until the tests
+are real, and `--write` deletes the originals. Let the agent draft; you decide when the prose is
+safe to lose.
+
+The draft is written to the path you name — it will not clobber an existing file without
+`--force`, and the check happens _before_ anything is rewritten, so a typo cannot cost you a
+`--write`. The import line is picked from your `package.json`: `vitest`, `@jest/globals`,
+`bun:test`, or nothing at all when jest globals are in play. Everything else — the report — still
+goes to stdout, so `--reporter json` stays parseable; the drafting summary goes to stderr.
+
+> [!TIP]
+> There is deliberately no config key for this. It is a one-shot migration aid, not a setting you
+> leave on.
 
 ### Configuration
 
@@ -716,7 +830,9 @@ because there they genuinely drive inference. That is the `jsdoc-type` rule; swi
 
 **What about `// TODO`?**
 Deleted. A TODO in source is a task nobody is assigned to and no board is tracking. Move it to an
-issue, where it has an owner. If you disagree, `--keep 'TODO'` — it is one flag and no hard
+issue, where it has an owner — or to an `it.todo(...)`, which is what
+[`--to-test-names`](#from-comments-to-test-names) drafts for you. If you disagree, `--keep 'TODO'`
+— it is one flag and no hard
 feelings.
 
 **Is it safe to run twice?**
@@ -769,7 +885,7 @@ is what you want in CI anyway.
 - [x] Per-rule `--no-keep` / `--keep-only` control over the built-in allowlist
 - [x] `commentless init` — a config baselined to the repo's current comment count
 - [x] Publish to npm automatically on every version bump landing on `main`
-- [ ] `--to-test-names` — draft `it(...)` stubs from the comments it is about to delete
+- [x] `--to-test-names` — draft `it(...)` stubs from the comments it is about to delete
 - [ ] Vue SFC and Svelte support
 - [ ] An ESLint rule, for teams that want the squiggle in the editor
 
@@ -795,7 +911,7 @@ request. You can also simply open an issue with the tag "enhancement".
 
 ```sh
 bun install
-bun run test   # 202 tests
+bun run test   # 272 tests
 bun run ci     # lint, format, typecheck, test, build, and the tool run against its own source
 ```
 

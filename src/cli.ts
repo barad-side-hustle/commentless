@@ -1,3 +1,4 @@
+import { existsSync, mkdirSync, writeFileSync } from 'node:fs';
 import path from 'node:path';
 import { createInterface } from 'node:readline/promises';
 import { parseArgs } from 'node:util';
@@ -13,6 +14,7 @@ import {
   resolveKeepRules,
   UnknownKeepRuleError,
 } from './core/keep.js';
+import { detectTestImport, draftTestNames } from './core/testnames.js';
 import { report, REPORTERS, type ReporterName } from './reporters/index.js';
 import type { RunMode } from './types.js';
 import { VERSION } from './version.js';
@@ -55,6 +57,9 @@ Comments to keep
 Output
   --reporter <name>        ${REPORTERS.join(' | ')} (default: pretty).
   --max-allowed <n>        --check passes while removable comments are at or under n.
+  --to-test-names <file>   Draft an it.todo(...) stub per comment into <file>, so the
+                           explanations have somewhere to go. Pair it with --check to
+                           look before you leap. --force overwrites an existing file.
   -q, --quiet              Summary only.
   -v, --verbose            Include kept-comment counts.
   --no-color               Disable colour.
@@ -83,6 +88,9 @@ Inline escapes
   commentless-keep-next-line   keep the comment that follows
   commentless-ignore-file      skip the whole file
 `;
+
+const AGENT_PROMPT_URL =
+  'https://github.com/barad-side-hustle/commentless#hand-the-skeleton-to-an-agent';
 
 class UsageError extends Error {}
 
@@ -146,6 +154,7 @@ export async function main(argv: readonly string[]): Promise<number> {
         concurrency: { type: 'string' },
         'no-cache': { type: 'boolean' },
         config: { type: 'string' },
+        'to-test-names': { type: 'string' },
         force: { type: 'boolean' },
         strict: { type: 'boolean' },
         scripts: { type: 'boolean' },
@@ -196,6 +205,9 @@ export async function main(argv: readonly string[]): Promise<number> {
     if (isInit && positionals.length > 1) {
       throw new UsageError(`init takes no paths, got ${positionals.slice(1).join(' ')}`);
     }
+    if (isInit && values['to-test-names']) {
+      throw new UsageError('--to-test-names does not apply to init');
+    }
 
     const { config } = isInit ? { config: {} as FileConfig } : loadConfig(cwd, values.config);
 
@@ -220,6 +232,15 @@ export async function main(argv: readonly string[]): Promise<number> {
       disable: [...(config.disableKeep ?? []), ...(values['no-keep'] ?? [])],
       ...(keepOnly ? { only: keepOnly } : {}),
     });
+
+    const testNamesFile = values['to-test-names']
+      ? path.resolve(cwd, values['to-test-names'])
+      : null;
+    if (testNamesFile && existsSync(testNamesFile) && !values.force) {
+      throw new UsageError(
+        `${values['to-test-names']} already exists. Re-run with --force to overwrite it.`
+      );
+    }
 
     const paths = !isInit && positionals.length > 0 ? positionals : ['.'];
     const extensions = values.ext
@@ -300,6 +321,36 @@ export async function main(argv: readonly string[]): Promise<number> {
         color: useColor,
       })}\n`
     );
+
+    if (testNamesFile) {
+      const shown = path.relative(cwd, testNamesFile).split(path.sep).join('/') || testNamesFile;
+      const draft = draftTestNames(result.files, { cwd, importLine: detectTestImport(cwd) });
+
+      if (draft.drafts.length === 0) {
+        process.stderr.write(`${colors.yellow('!')} No comments left to draft into ${shown}.\n`);
+      } else {
+        mkdirSync(path.dirname(testNamesFile), { recursive: true });
+        writeFileSync(testNamesFile, draft.source, 'utf8');
+        const skipped =
+          draft.skipped > 0
+            ? colors.dim(
+                ` (${draft.skipped} comment${draft.skipped === 1 ? '' : 's'} skipped: ` +
+                  'commented-out code, banners, and the like)'
+              )
+            : '';
+        process.stderr.write(
+          `${colors.green('✔')} Drafted ${draft.drafts.length} test name${
+            draft.drafts.length === 1 ? '' : 's'
+          } from ${draft.files} file${draft.files === 1 ? '' : 's'} into ` +
+            `${colors.bold(shown)}${skipped}\n` +
+            colors.dim(
+              `  Next: hand ${shown} to your coding agent and have it fill in every it.todo\n` +
+                '  against the source file named in its describe block. Prompt to paste:\n' +
+                `  ${AGENT_PROMPT_URL}\n`
+            )
+        );
+      }
+    }
 
     return result.exitCode;
   } catch (error) {
