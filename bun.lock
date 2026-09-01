@@ -4,6 +4,16 @@
   "workspaces": {
     "": {
       "name": "commentless",
+      "devDependencies": {
+        "prettier": "^3.6.2",
+      },
+    },
+    "packages/js": {
+      "name": "commentless",
+      "version": "0.2.0",
+      "bin": {
+        "commentless": "dist/bin.js",
+      },
       "dependencies": {
         "ignore": "^7.0.5",
         "picocolors": "^1.1.1",
@@ -349,6 +359,8 @@
     "color-convert": ["color-convert@2.0.1", "", { "dependencies": { "color-name": "~1.1.4" } }, "sha512-RRECPsj7iu/xb5oKYcsFHSppFNnsj/52OVTRKb4zP5onXwVF3zVmmToNcOfGC+CRDpfK/U584fMg38ZHCaElKQ=="],
 
     "color-name": ["color-name@1.1.4", "", {}, "sha512-dOy+3AuW3a2wNbZHIuMZpTcgjGuLU/uBL/ubcZF9OXbDo8ff4O8yVp5Bf0efS8uEoYo5q4Fx7dY9OgQGXgAsQA=="],
+
+    "commentless": ["commentless@workspace:packages/js"],
 
     "concat-map": ["concat-map@0.0.1", "", {}, "sha512-/Srv4dswyQNBfohGpz9o6Yb3Gz3SrUDqBH5rTuhGR7ahtlbYKnVxw2bCFMRljaA7EXHaXZ8wsHdodFvbkhKmqg=="],
 

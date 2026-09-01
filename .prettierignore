@@ -2,3 +2,5 @@ dist
 coverage
 node_modules
 tests/fixtures
+packages/python
+packages/js/README.md

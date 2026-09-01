@@ -1,4 +1,4 @@
-name: Release
+name: Release (npm)
 
 on:
   push:
@@ -10,7 +10,7 @@ permissions:
   id-token: write
 
 concurrency:
-  group: release
+  group: release-js
   cancel-in-progress: false
 
 jobs:
@@ -32,7 +32,7 @@ jobs:
       - id: version
         name: Read the version and ask npm whether it is new
         run: |
-          version="$(node -p "require('./package.json').version")"
+          version="$(node -p "require('./packages/js/package.json').version")"
           echo "version=$version" >> "$GITHUB_OUTPUT"
           if npm view "commentless@$version" version --silent > /dev/null 2>&1; then
             echo "published=true" >> "$GITHUB_OUTPUT"
@@ -46,34 +46,35 @@ jobs:
         run: bun install --frozen-lockfile
 
       - if: steps.version.outputs.published == 'false'
-        run: bun run lint
+        run: bun run --cwd packages/js lint
 
       - if: steps.version.outputs.published == 'false'
         run: bun run format
 
       - if: steps.version.outputs.published == 'false'
-        run: bun run typecheck
+        run: bun run --cwd packages/js typecheck
 
       - if: steps.version.outputs.published == 'false'
-        run: bun run build
+        run: bun run --cwd packages/js build
 
       - if: steps.version.outputs.published == 'false'
-        run: bun run test
+        run: bun run --cwd packages/js test
 
       - if: steps.version.outputs.published == 'false'
         name: Run the CLI against its own source
-        run: bun run selfcheck
+        run: bun run --cwd packages/js selfcheck
 
       - if: steps.version.outputs.published == 'false'
         name: Check the CLI reports the version it is about to publish
         run: |
-          reported="$(node dist/bin.js --version)"
+          reported="$(node packages/js/dist/bin.js --version)"
           if [ "$reported" != "${{ steps.version.outputs.version }}" ]; then
-            echo "src/cli.ts reports $reported but package.json says ${{ steps.version.outputs.version }}"
+            echo "src/version.ts reports $reported but package.json says ${{ steps.version.outputs.version }}"
             exit 1
           fi
 
       - if: steps.version.outputs.published == 'false'
+        working-directory: packages/js
         run: npm publish --access public --provenance
         env:
           NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
@@ -85,6 +86,6 @@ jobs:
           VERSION: ${{ steps.version.outputs.version }}
         run: |
           gh release create "v$VERSION" \
-            --title "v$VERSION" \
+            --title "commentless (npm) v$VERSION" \
             --generate-notes \
             --target "$GITHUB_SHA"

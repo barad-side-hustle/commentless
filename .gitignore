@@ -5,3 +5,14 @@ coverage
 .DS_Store
 .env
 .commentless-cache
+
+.venv
+__pycache__/
+*.py[cod]
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+build/
+*.egg-info/
+
+packages/js/README.md

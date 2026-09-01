@@ -1,79 +1,24 @@
 {
-  "name": "commentless",
-  "version": "0.2.0",
-  "description": "Strip comments from JavaScript and TypeScript with an AST, keep the ones that do work, and fail CI when new ones appear.",
-  "keywords": [
-    "comments",
-    "strip-comments",
-    "remove-comments",
-    "typescript",
-    "tsx",
-    "jsx",
-    "cli",
-    "lint",
-    "ci",
-    "codemod"
-  ],
+  "name": "commentless-monorepo",
+  "private": true,
+  "description": "commentless — one convention, one implementation per language.",
   "license": "MIT",
-  "author": "alon710",
-  "homepage": "https://github.com/barad-side-hustle/commentless#readme",
-  "repository": {
-    "type": "git",
-    "url": "git+https://github.com/barad-side-hustle/commentless.git"
-  },
-  "bugs": {
-    "url": "https://github.com/barad-side-hustle/commentless/issues"
-  },
   "type": "module",
-  "engines": {
-    "node": ">=20"
-  },
-  "bin": {
-    "commentless": "dist/bin.js"
-  },
-  "exports": {
-    ".": {
-      "types": "./dist/index.d.ts",
-      "default": "./dist/index.js"
-    },
-    "./package.json": "./package.json"
-  },
-  "main": "./dist/index.js",
-  "types": "./dist/index.d.ts",
-  "files": [
-    "dist"
+  "workspaces": [
+    "packages/js"
   ],
   "scripts": {
-    "build": "tsdown",
-    "dev": "tsdown --watch",
-    "test": "vitest run",
-    "test:watch": "vitest watch",
-    "test:coverage": "vitest run --coverage",
-    "typecheck": "tsc --noEmit",
-    "lint": "eslint .",
-    "lint:fix": "eslint . --fix",
+    "build": "bun run --cwd packages/js build",
+    "test": "bun run --cwd packages/js test",
+    "lint": "bun run --cwd packages/js lint",
+    "typecheck": "bun run --cwd packages/js typecheck",
     "format": "prettier --check .",
     "format:write": "prettier --write .",
-    "selfcheck": "node dist/bin.js . --check",
-    "bench": "node bench/run.js",
-    "prepublishOnly": "bun run build",
-    "ci": "bun run lint && bun run format && bun run typecheck && bun run test && bun run build && bun run selfcheck"
-  },
-  "dependencies": {
-    "ignore": "^7.0.5",
-    "picocolors": "^1.1.1",
-    "tinyglobby": "^0.2.15",
-    "typescript": "^5.9.2"
+    "ci:js": "bun run --cwd packages/js ci",
+    "ci:python": "uv run --directory packages/python --frozen ruff check . && uv run --directory packages/python --frozen ruff format --check . && uv run --directory packages/python --frozen mypy src tests && uv run --directory packages/python --frozen pytest tests && uv run --directory packages/python --frozen commentless . --check --docstrings",
+    "ci": "bun run format && bun run ci:js && bun run ci:python"
   },
   "devDependencies": {
-    "@eslint/js": "^9.39.0",
-    "@types/node": "^24.9.1",
-    "@vitest/coverage-v8": "^3.2.4",
-    "eslint": "^9.39.0",
-    "globals": "^17.11.0",
-    "prettier": "^3.6.2",
-    "tsdown": "^0.22.14",
-    "typescript-eslint": "^8.46.0",
-    "vitest": "^3.2.4"
+    "prettier": "^3.6.2"
   }
 }
