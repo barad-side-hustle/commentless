@@ -1,0 +1,100 @@
+name: Release (PyPI)
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: write
+  id-token: write
+
+concurrency:
+  group: release-python
+  cancel-in-progress: false
+
+jobs:
+  release:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    environment: pypi
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - uses: astral-sh/setup-uv@v5
+        with:
+          enable-cache: true
+
+      - id: version
+        name: Read the version and ask PyPI whether it is new
+        run: |
+          version="$(python3 -c "
+          import pathlib, tomllib
+          print(tomllib.loads(pathlib.Path('packages/python/pyproject.toml').read_text())['project']['version'])
+          ")"
+          echo "version=$version" >> "$GITHUB_OUTPUT"
+          pypi_status="$(curl -s -o /dev/null -w '%{http_code}' "https://pypi.org/pypi/commentless/$version/json")"
+          if [ "$pypi_status" = "200" ]; then
+            echo "published=true" >> "$GITHUB_OUTPUT"
+            echo "::notice title=Release::commentless $version is already on PyPI — nothing to publish."
+          else
+            echo "published=false" >> "$GITHUB_OUTPUT"
+            echo "::notice title=Release::commentless $version is new — publishing."
+          fi
+
+      - if: steps.version.outputs.published == 'false'
+        working-directory: packages/python
+        run: uv sync --frozen
+
+      - if: steps.version.outputs.published == 'false'
+        working-directory: packages/python
+        run: uv run ruff check .
+
+      - if: steps.version.outputs.published == 'false'
+        working-directory: packages/python
+        run: uv run ruff format --check .
+
+      - if: steps.version.outputs.published == 'false'
+        working-directory: packages/python
+        run: uv run mypy src tests
+
+      - if: steps.version.outputs.published == 'false'
+        working-directory: packages/python
+        run: uv run pytest tests
+
+      - if: steps.version.outputs.published == 'false'
+        name: Run the CLI against its own source
+        working-directory: packages/python
+        run: uv run commentless . --check --docstrings
+
+      - if: steps.version.outputs.published == 'false'
+        name: Check the CLI reports the version it is about to publish
+        working-directory: packages/python
+        run: |
+          reported="$(uv run commentless --version)"
+          if [ "$reported" != "${{ steps.version.outputs.version }}" ]; then
+            echo "version.py reports $reported but pyproject.toml says ${{ steps.version.outputs.version }}"
+            exit 1
+          fi
+
+      - if: steps.version.outputs.published == 'false'
+        working-directory: packages/python
+        run: uv build
+
+      - if: steps.version.outputs.published == 'false'
+        uses: pypa/gh-action-pypi-publish@release/v1
+        with:
+          packages-dir: packages/python/dist
+
+      - if: steps.version.outputs.published == 'false'
+        name: Tag the release
+        env:
+          GH_TOKEN: ${{ github.token }}
+          VERSION: ${{ steps.version.outputs.version }}
+        run: |
+          gh release create "python-v$VERSION" \
+            --title "commentless (PyPI) v$VERSION" \
+            --generate-notes \
+            --target "$GITHUB_SHA"

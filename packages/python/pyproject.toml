@@ -1,0 +1,83 @@
+[build-system]
+requires = ["hatchling>=1.27"]
+build-backend = "hatchling.build"
+
+[project]
+name = "commentless"
+version = "0.1.0"
+description = "Strip comments from Python with a real tokenizer, keep the ones that do work, and fail CI when new ones appear."
+readme = "README.md"
+license = "MIT"
+license-files = ["LICENSE"]
+requires-python = ">=3.11"
+authors = [{ name = "alon710" }]
+keywords = [
+  "comments",
+  "strip-comments",
+  "remove-comments",
+  "docstrings",
+  "python",
+  "cli",
+  "lint",
+  "ci",
+  "codemod",
+  "pre-commit",
+]
+classifiers = [
+  "Development Status :: 4 - Beta",
+  "Environment :: Console",
+  "Intended Audience :: Developers",
+  "Programming Language :: Python :: 3",
+  "Programming Language :: Python :: 3.11",
+  "Programming Language :: Python :: 3.12",
+  "Programming Language :: Python :: 3.13",
+  "Topic :: Software Development :: Quality Assurance",
+  "Topic :: Software Development :: Pre-processors",
+  "Typing :: Typed",
+]
+dependencies = ["pathspec>=0.12"]
+
+[project.urls]
+Homepage = "https://github.com/barad-side-hustle/commentless#readme"
+Repository = "https://github.com/barad-side-hustle/commentless"
+Issues = "https://github.com/barad-side-hustle/commentless/issues"
+Changelog = "https://github.com/barad-side-hustle/commentless/releases"
+
+[project.scripts]
+commentless = "commentless.cli:entry"
+
+[dependency-groups]
+dev = ["pytest>=8.3", "mypy>=1.13", "ruff>=0.8", "pyyaml>=6", "types-pyyaml>=6"]
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/commentless"]
+
+[tool.hatch.build.targets.sdist]
+include = ["src", "tests", "README.md", "LICENSE", "pyproject.toml"]
+
+[tool.ruff]
+line-length = 100
+src = ["src", "tests"]
+extend-exclude = ["tests/fixtures", "*.md"]
+
+[tool.ruff.lint]
+select = ["E", "F", "I", "UP", "B", "SIM", "RUF", "N", "C4", "PT", "RET", "TID"]
+ignore = ["SIM108"]
+
+[tool.ruff.lint.per-file-ignores]
+"src/commentless/config.py" = ["N815"]
+"src/commentless/testnames.py" = ["RUF001"]
+"tests/*" = ["E501"]
+
+[tool.mypy]
+python_version = "3.11"
+strict = true
+warn_unreachable = true
+exclude = ["tests/fixtures"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+addopts = "-q"
+
+[tool.commentless]
+ignore = ["tests/fixtures/**"]

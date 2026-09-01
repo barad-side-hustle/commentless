@@ -9,17 +9,18 @@
   <p align="center">
     <strong>Your code does not need a narrator.</strong>
     <br />
-    Strip comments from JavaScript and TypeScript with a real parser, keep the ones that
-    actually do work, and fail CI when someone sneaks a new one in.
+    Strip comments with a real parser, keep the ones that actually do work,
+    and fail CI when someone sneaks a new one in.
   </p>
 
 <!-- PROJECT SHIELDS -->
 
 [![npm version][npm-shield]][npm-url]
+[![PyPI version][pypi-shield]][pypi-url]
 [![npm downloads][downloads-shield]][downloads-url]
 [![CI][build-shield]][build-url]
-[![Unpacked size][size-shield]][size-url]
 [![Node][node-version-shield]][node-version-url]
+[![Python][python-version-shield]][python-version-url]
 [![License][license-shield]][license-url]
 [![Stars][stars-shield]][stars-url]
 
@@ -31,6 +32,8 @@
     &middot;
     <a href="#why-your-comments-belong-in-test-names">The philosophy</a>
     &middot;
+    <a href="#python">Python</a>
+    &middot;
     <a href="#faq">FAQ</a>
     &middot;
     <a href="https://github.com/barad-side-hustle/commentless/issues/new?labels=bug">Report Bug</a>
@@ -38,6 +41,27 @@
     <a href="https://github.com/barad-side-hustle/commentless/issues/new?labels=enhancement">Request Feature</a>
   </p>
 </div>
+
+<!-- LANGUAGES -->
+
+## Two implementations, one convention
+
+`commentless` ships one implementation per language. They are separate packages on separate
+registries, but they share a keep-rule vocabulary, a config schema, a flag surface, four
+reporters and three exit codes — so a polyglot repo gets one gate, not two dialects.
+
+|                 | JavaScript / TypeScript                                           | Python                                                         |
+| --------------- | ----------------------------------------------------------------- | -------------------------------------------------------------- |
+| Package         | [`commentless`](https://www.npmjs.com/package/commentless) on npm | [`commentless`](https://pypi.org/project/commentless/) on PyPI |
+| Source          | [`packages/js`](packages/js)                                      | [`packages/python`](packages/python)                           |
+| Run it          | `bunx commentless`                                                | `uvx commentless`                                              |
+| Parser          | the TypeScript compiler                                           | `tokenize` + `ast`                                             |
+| Extensions      | `.ts .tsx .mts .cts .js .jsx .mjs .cjs`                           | `.py .pyi`                                                     |
+| Keep rules      | 16                                                                | 19                                                             |
+| Drafts tests as | `it.todo(...)`                                                    | `@pytest.mark.skip` / `@unittest.skip`                         |
+| Docs            | this page                                                         | [`packages/python/README.md`](packages/python/README.md)       |
+
+Everything below is the JavaScript/TypeScript story. **[Jump to Python →](#python)**
 
 <!-- TL;DR -->
 
@@ -294,14 +318,17 @@ Both are libraries, not CLIs, both are regex/lexer based, and both have been unm
 [![Node.js][node-shield]][node-url]
 [![Vitest][vitest-shield]][vitest-url]
 [![Bun][bun-shield]][bun-url]
+[![Python][python-shield]][python-url]
+[![uv][uv-shield]][uv-url]
+[![Ruff][ruff-shield]][ruff-url]
 
 Four direct dependencies, six in the whole tree, deliberately. `bunx` cold start is the product,
 and nobody wants to download a dependency graph to delete some slashes.
 
 |                     |                                                                    |
 | ------------------- | ------------------------------------------------------------------ |
-| Published tarball   | 27 kB                                                              |
-| Unpacked            | 88 kB across 6 shipped files                                       |
+| Published tarball   | 37 kB                                                              |
+| Unpacked            | 119 kB across 9 files, 62 kB of it `dist/`                         |
 | Direct dependencies | `typescript`, `tinyglobby`, `ignore`, `picocolors`                 |
 | Node                | 20 or newer                                                        |
 | Types               | bundled, no `@types/` package                                      |
@@ -309,6 +336,9 @@ and nobody wants to download a dependency graph to delete some slashes.
 
 `typescript` is the big one and it is not negotiable — it is the parser, and it is the entire
 reason a `//` inside a template literal survives.
+
+[The Python package](#python) is leaner still — `pathspec` is its only runtime dependency, because
+`tokenize`, `ast` and `tomllib` are all in the standard library.
 
 <p align="right">(<a href="#readme-top">back to top</a>)</p>
 
@@ -318,7 +348,8 @@ reason a `//` inside a template literal survives.
 
 ### Prerequisites
 
-Node 20 or newer. That is the entire list.
+Node 20 or newer for the JavaScript/TypeScript package. Python 3.11 or newer for
+[the Python one](#python). That is the entire list.
 
 ```sh
 node --version
@@ -332,6 +363,7 @@ There is nothing to install. Point it at your repo and find out how bad it is:
 bunx commentless --check      # bun
 npx  commentless --check      # npm
 pnpm dlx commentless --check  # pnpm
+uvx  commentless --check      # Python codebases
 ```
 
 Ready to commit to the bit:
@@ -873,6 +905,143 @@ is what you want in CI anyway.
 
 <p align="right">(<a href="#readme-top">back to top</a>)</p>
 
+<!-- PYTHON -->
+
+## Python
+
+Same tool, same convention, a separate package on PyPI.
+
+```sh
+uvx commentless init     # or: pipx install commentless
+uvx commentless --check
+uvx commentless
+```
+
+Every flag on this page works there: `--check`, `--write`, `--dry-run`, `--staged`, `--changed`,
+`--base`, `--ext`, `--ignore`, `--ignore-file`, `--no-gitignore`, `--list-files`, `--keep`,
+`--no-keep`, `--keep-only`, `--no-default-keep`, `--list-keep-rules`, `--collapse-blank-lines`,
+`--reporter`, `--max-allowed`, `--to-test-names`, `--quiet`, `--verbose`, `--no-color`,
+`--concurrency`, `--no-cache`, `--config`, and `init --force --strict`. Same four reporters, same
+three exit codes, same `commentless-keep` / `commentless-keep-next-line` / `commentless-ignore-file`
+escapes.
+
+**Full reference: [`packages/python/README.md`](packages/python/README.md).** What follows is only
+what is _different_, because Python is not JavaScript.
+
+### Docstrings are opt-in
+
+A `#` comment is inert. A docstring is a runtime value — `doctest` runs the `>>>` examples,
+FastAPI turns it into an OpenAPI description, Sphinx and `help()` render it, `argparse` uses a
+module docstring as its epilog. So `commentless` never touches docstrings unless you pass
+`--docstrings` (or set `docstrings = true`).
+
+When you do opt in, three safety rules still hold the line:
+
+| Rule             | What it protects                                                                                                                                                                  |
+| ---------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `sole-statement` | A docstring that is the only statement in a class or function body — `Protocol` methods, `@overload` stubs, abstract methods. Deleting it would leave a body that does not parse. |
+| `inline`         | A docstring sharing its line with other code, like `"""Doc."""; x = 1`.                                                                                                           |
+| `doctest`        | Any docstring containing a `>>>` example. Deleting it would delete a test.                                                                                                        |
+
+The output is always still valid Python. That invariant is a test, not a hope.
+
+### A Python keep-rule vocabulary
+
+19 rules instead of 16, because Python's directive comments are its own:
+
+| Rule           | Matches                                                 |
+| -------------- | ------------------------------------------------------- |
+| `commentless`  | `# commentless-keep`, `# commentless-keep-next-line`    |
+| `noqa`         | `# noqa`, `# noqa: E501` — flake8, ruff, vulture        |
+| `ruff`         | `# ruff: isort: on` and friends                         |
+| `mypy`         | `# mypy: disallow-untyped-defs`                         |
+| `type-ignore`  | `# type: ignore`, `# type: ignore[arg-type]`            |
+| `type-comment` | PEP 484 type comments — `# type: List[int]`             |
+| `pyright`      | `# pyright: ignore`, `# pyright: strict`                |
+| `pylint`       | `# pylint: disable`, `enable`, `skip-file`              |
+| `pytype`       | `# pytype: disable`, `skip-file`                        |
+| `pragma`       | `# pragma: no cover`, `no branch`, `allowlist secret`   |
+| `bandit`       | `# nosec`                                               |
+| `fmt`          | `# fmt: off`, `# fmt: on`, `# fmt: skip`                |
+| `isort`        | `# isort: skip`, `skip_file`, `off`, `on`, `split`      |
+| `yapf`         | `# yapf: disable`, `# yapf: enable`                     |
+| `coding`       | PEP 263 encoding cookie, on line 1 or 2 only            |
+| `cython`       | `# cython:` and `# distutils:` build directives         |
+| `license`      | `@license`, `@preserve`, `SPDX-License-Identifier`      |
+| `noinspection` | `# noinspection` (PyCharm)                              |
+| `doctest`      | Docstrings containing a `>>>` example (docstrings only) |
+
+Shebangs are handled structurally, not by a rule, so they are never at risk.
+
+### `--collapse-blank-lines` stops at two
+
+PEP 8 wants two blank lines between top-level definitions. The JS implementation collapses runs of
+three-or-more newlines down to one blank line; the Python one stops at two, so it will not fight
+`black` or `ruff format`.
+
+### Test stubs are pytest or unittest
+
+`--to-test-names` has no `it.todo` to lean on, so it drafts a class per source file and a skipped
+test per sentence:
+
+```python
+import pytest
+
+
+class TestSrcCache:
+    @pytest.mark.skip(reason="todo: bails out when the cache is cold")
+    def test_bails_out_when_the_cache_is_cold(self) -> None: ...
+```
+
+The sentence lives in both the method name and the skip reason, so `pytest -rs` prints it back to
+you. If the project does not use pytest — checked against `pyproject.toml`, `pytest.ini`,
+`tox.ini`, `setup.cfg`, `conftest.py` and `requirements*.txt` — it falls back to
+`unittest.TestCase` with `@unittest.skip`, which runs anywhere.
+
+### Config lives in `pyproject.toml` too
+
+`commentless.config.json` works exactly as it does in JS, and is checked first. Failing that,
+`[tool.commentless]` in `pyproject.toml` is read instead:
+
+```toml
+[tool.commentless]
+ignore = ["migrations/**"]
+docstrings = false
+maxAllowed = 0
+```
+
+Keys are camelCase so one schema covers both languages, but snake_case aliases (`max_allowed`,
+`collapse_blank_lines`, …) are accepted.
+
+### `init` offers a pre-commit hook, not npm scripts
+
+There is no `package.json` to write scripts into, so `commentless init` offers the Python
+equivalent — a hook in `.pre-commit-config.yaml`:
+
+```yaml
+repos:
+  - repo: local
+    hooks:
+      - id: commentless
+        name: commentless
+        entry: commentless --check
+        language: python
+        additional_dependencies: ['commentless==0.1.0']
+        types: [python]
+```
+
+`--pre-commit` adds it without asking, `--no-pre-commit` never does, and interactively it asks.
+`init --pyproject` writes the config as `[tool.commentless]` instead of a JSON file.
+
+### The pool threshold is different
+
+`tokenize` is pure Python and process startup is not free, so the Python implementation only
+reaches for a process pool at 200+ files **and** 1 MB+ of pending source. Below that, one process
+is faster. The JS implementation uses worker threads, which are cheap enough to spin up on file
+count alone.
+
+<p align="right">(<a href="#readme-top">back to top</a>)</p>
+
 <!-- ROADMAP -->
 
 ## Roadmap
@@ -886,8 +1055,11 @@ is what you want in CI anyway.
 - [x] `commentless init` — a config baselined to the repo's current comment count
 - [x] Publish to npm automatically on every version bump landing on `main`
 - [x] `--to-test-names` — draft `it(...)` stubs from the comments it is about to delete
+- [x] A Python implementation on PyPI, sharing the config schema and the flag surface
 - [ ] Vue SFC and Svelte support
 - [ ] An ESLint rule, for teams that want the squiggle in the editor
+- [ ] A published pre-commit hook repo, so the Python hook is not a `repo: local` block
+- [ ] Go and Rust, once the shared convention has proven itself across two languages
 
 See the [open issues][issues-url] for the full list of proposed features and known issues.
 
@@ -909,11 +1081,28 @@ request. You can also simply open an issue with the tag "enhancement".
 4. Push to the Branch (`git push origin feature/AmazingFeature`)
 5. Open a Pull Request
 
+The repo holds one package per language under `packages/`. They share a README, an issue tracker
+and a convention — nothing else. Pick the one you are changing.
+
 ```sh
-bun install
-bun run test   # 272 tests
-bun run ci     # lint, format, typecheck, test, build, and the tool run against its own source
+bun install                # JavaScript / TypeScript, from the repo root
+bun run --cwd packages/js test    # 272 tests
+bun run ci:js              # lint, typecheck, test, build, and the tool run against its own source
 ```
+
+```sh
+cd packages/python         # Python
+uv sync
+uv run pytest tests        # 373 tests
+uv run ruff check . && uv run ruff format --check .
+uv run mypy src tests
+uv run commentless . --check --docstrings
+```
+
+`bun run ci` from the repo root runs both, plus `prettier --check` over everything.
+
+If you add a flag, a keep rule or a config key to one implementation, open an issue for the other
+one. Drift between them is the failure mode this layout exists to prevent.
 
 Two house rules, both self-explanatory given the above:
 
@@ -976,6 +1165,16 @@ Project Link: [https://github.com/barad-side-hustle/commentless](https://github.
 [size-url]: https://www.npmjs.com/package/commentless?activeTab=code
 [node-version-shield]: https://img.shields.io/node/v/commentless?style=flat-square&color=5FA04E&logo=nodedotjs&logoColor=white
 [node-version-url]: https://nodejs.org/
+[pypi-shield]: https://img.shields.io/pypi/v/commentless.svg?style=flat-square&color=3775A9&logo=pypi&logoColor=white&label=PyPI
+[pypi-url]: https://pypi.org/project/commentless/
+[python-version-shield]: https://img.shields.io/pypi/pyversions/commentless?style=flat-square&color=3775A9&logo=python&logoColor=white
+[python-version-url]: https://www.python.org/
+[python-shield]: https://img.shields.io/badge/Python-3776AB?style=for-the-badge&logo=python&logoColor=white
+[python-url]: https://www.python.org/
+[uv-shield]: https://img.shields.io/badge/uv-DE5FE9?style=for-the-badge&logo=uv&logoColor=white
+[uv-url]: https://docs.astral.sh/uv/
+[ruff-shield]: https://img.shields.io/badge/Ruff-D7FF64?style=for-the-badge&logo=ruff&logoColor=black
+[ruff-url]: https://docs.astral.sh/ruff/
 [license-shield]: https://img.shields.io/github/license/barad-side-hustle/commentless.svg?style=flat-square
 [license-url]: https://github.com/barad-side-hustle/commentless/blob/main/LICENSE
 [stars-shield]: https://img.shields.io/github/stars/barad-side-hustle/commentless.svg?style=flat-square&logo=github
